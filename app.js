@@ -279,7 +279,8 @@ function vistaHoy() {
   const ult = S.sesiones.slice().sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
   const ultHtml = ult ? `<p class="nota-pie">Última: ${fechaLarga(ult.fecha)}, ${esc(ult.tipo === 'gym' ? ult.nombreDia : ult.actividad)}.</p>` : '<p class="nota-pie">Todavía no registraste nada. Empezá por el día que te toca.</p>';
 
-  return `<header class="encabezado"><h1>¿Qué hacés hoy?</h1><div class="fecha">${fechaLarga(hoy)}</div></header>
+  return `<header class="encabezado sesion-top"><div><h1>¿Qué hacés hoy?</h1><div class="fecha">${fechaLarga(hoy)}</div></div>
+      <button class="link" data-action="actualizar" title="Buscar versión nueva">↻ Actualizar</button></header>
     ${strip}
     ${sug ? `<p class="motivo">Esta semana: ${esc(sug.motivo)} · ${fmtMin(semana.filter(s => s.tipo === 'gym').reduce((n, s) => n + (s.duracionMin || 0), 0))} de gym</p>` : ''}
     ${diasHtml}
@@ -663,7 +664,12 @@ function vistaAjustes() {
       <div class="sub">${S.sesiones.length} sesiones guardadas.</div>
       <button class="btn peligro-borde" data-action="borrar-todo">Borrar todos los datos</button>
     </div>
-    <p class="nota-pie">Versión 1 · ${S.sesiones.length ? 'último registro ' + fechaCorta(S.sesiones.slice().sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha) : 'sin registros'}</p>`;
+    <div class="card">
+      <div class="titulo">Versión ${VERSION_APP}</div>
+      <div class="sub">Si te avisé que hay una versión nueva, tocá acá. Necesita internet.</div>
+      <button class="btn secundario" data-action="actualizar">↻ Actualizar la app</button>
+    </div>
+    <p class="nota-pie">${S.sesiones.length ? 'Último registro ' + fechaCorta(S.sesiones.slice().sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha) : 'Sin registros'}</p>`;
 }
 
 // ---------- eventos ----------
@@ -821,6 +827,7 @@ document.addEventListener('click', ev => {
     S.perfil.peso = v; save(); toast('Peso registrado'); return render();
   }
   if (a === 'exportar') return exportarEstado(S);
+  if (a === 'actualizar') return actualizarApp();
   if (a === 'borrar-todo') {
     if (!confirm('Esto borra TODO: sesiones, rutinas y ajustes. ¿Seguro?')) return;
     if (!confirm('¿Exportaste un respaldo? Última chance.')) return;
@@ -905,6 +912,22 @@ window.addEventListener('popstate', () => {
   if (cerro) history.pushState({ app: true }, '');
 });
 history.pushState({ app: true }, '');
+
+// Borra la copia guardada de la app y la vuelve a bajar. Los datos no se tocan (están en localStorage).
+async function actualizarApp() {
+  toast('Buscando versión nueva…');
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch (e) { console.warn(e); }
+  location.reload();
+}
 
 if ('speechSynthesis' in window) speechSynthesis.getVoices();
 
