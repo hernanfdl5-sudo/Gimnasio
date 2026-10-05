@@ -1,5 +1,5 @@
 // Versión de la app. Se muestra en Ajustes para saber si el celu tiene la última.
-const VERSION_APP = '1.1';
+const VERSION_APP = '1.2';
 
 // Catálogo de ejercicios, zonas y rutinas por defecto.
 // Todo lo que está acá se puede modificar desde la app (Rutinas > Catálogo).
@@ -24,9 +24,8 @@ const ZONAS = {
 };
 
 const UNIDADES = {
-  kg: { label: 'kg', corto: 'kg' },
-  discos: { label: 'discos', corto: 'discos' },
-  placa: { label: 'placa', corto: 'placa' },
+  kg: { label: 'kilos', corto: 'kg' },
+  discos: { label: 'discos (o nivel de la máquina)', corto: 'discos' },
   corporal: { label: 'peso corporal (+kg extra)', corto: '+kg' },
 };
 
@@ -78,7 +77,7 @@ const CATALOGO = [
   },
   {
     id: 'cruce-poleas-alto', nombre: 'Cruce de poleas alto', tecnico: 'High cable crossover',
-    grupo: 'pecho', zona: 'Pecho inferior / cierre', equipo: 'Poleas altas', unidad: 'placa',
+    grupo: 'pecho', zona: 'Pecho inferior / cierre', equipo: 'Poleas altas', unidad: 'discos',
     tecnica: [
       'Poleas en lo más alto, una manija en cada mano, un pie adelante para estabilizar.',
       'Inclinate apenas hacia adelante con los codos un poco flexionados y fijos.',
@@ -89,7 +88,7 @@ const CATALOGO = [
   },
   {
     id: 'cruce-poleas-bajo', nombre: 'Cruce de poleas bajo', tecnico: 'Low cable crossover',
-    grupo: 'pecho', zona: 'Pecho superior', equipo: 'Poleas bajas', unidad: 'placa',
+    grupo: 'pecho', zona: 'Pecho superior', equipo: 'Poleas bajas', unidad: 'discos',
     tecnica: [
       'Poleas en lo más bajo, manija en cada mano, un pie adelante.',
       'Con los codos apenas flexionados, llevá las manos hacia arriba y adelante como abrazando.',
@@ -111,7 +110,7 @@ const CATALOGO = [
   },
   {
     id: 'pec-deck', nombre: 'Máquina contractora (pec deck)', tecnico: 'Pec deck / chest fly machine',
-    grupo: 'pecho', zona: 'Pecho inferior / cierre', equipo: 'Máquina', unidad: 'placa',
+    grupo: 'pecho', zona: 'Pecho inferior / cierre', equipo: 'Máquina', unidad: 'discos',
     tecnica: [
       'Sentado con la espalda apoyada, manijas a la altura del pecho.',
       'Juntá las manijas al frente apretando el pecho, codos apenas doblados.',
@@ -135,7 +134,7 @@ const CATALOGO = [
   // ---------------- TRÍCEPS ----------------
   {
     id: 'extension-polea-barra', nombre: 'Extensión de tríceps en polea (barra)', tecnico: 'Cable triceps pushdown',
-    grupo: 'triceps', zona: 'Tríceps · empuje', equipo: 'Polea alta con barra corta', unidad: 'placa',
+    grupo: 'triceps', zona: 'Tríceps · empuje', equipo: 'Polea alta con barra corta', unidad: 'discos',
     tecnica: [
       'Parado frente a la polea alta, agarrá la barra con las palmas hacia abajo.',
       'Codos pegados a los costados del cuerpo y quietos durante todo el movimiento.',
@@ -146,7 +145,7 @@ const CATALOGO = [
   },
   {
     id: 'extension-polea-cuerda', nombre: 'Extensión de tríceps en polea (cuerda)', tecnico: 'Rope triceps pushdown',
-    grupo: 'triceps', zona: 'Tríceps · empuje', equipo: 'Polea alta con cuerda', unidad: 'placa',
+    grupo: 'triceps', zona: 'Tríceps · empuje', equipo: 'Polea alta con cuerda', unidad: 'discos',
     tecnica: [
       'Igual que con la barra, pero con la cuerda.',
       'Al llegar abajo, separá las manos hacia los costados girando las muñecas.',
@@ -236,7 +235,7 @@ const CATALOGO = [
   },
   {
     id: 'face-pull', nombre: 'Face pull (tirón a la cara)', tecnico: 'Face pull',
-    grupo: 'hombros', zona: 'Hombro posterior', equipo: 'Polea alta con cuerda', unidad: 'placa',
+    grupo: 'hombros', zona: 'Hombro posterior', equipo: 'Polea alta con cuerda', unidad: 'discos',
     tecnica: [
       'Polea a la altura de la cara con la cuerda. Agarrá con los pulgares apuntando hacia vos.',
       'Tirá hacia la cara abriendo las manos, como si la cuerda tuviera que pasar por los costados de las orejas.',
@@ -260,7 +259,7 @@ const CATALOGO = [
   // ---------------- ESPALDA ----------------
   {
     id: 'jalon-pecho-ancho', nombre: 'Jalón al pecho agarre ancho', tecnico: 'Wide-grip lat pulldown',
-    grupo: 'espalda', zona: 'Dorsal · tirón vertical', equipo: 'Máquina de jalón', unidad: 'placa',
+    grupo: 'espalda', zona: 'Dorsal · tirón vertical', equipo: 'Máquina de jalón', unidad: 'discos',
     tecnica: [
       'Sentado con los muslos trabados, agarre ancho con las palmas al frente.',
       'Inclinate apenas hacia atrás, pecho hacia arriba.',
@@ -271,7 +270,7 @@ const CATALOGO = [
   },
   {
     id: 'jalon-pecho-cerrado', nombre: 'Jalón al pecho agarre cerrado', tecnico: 'Close-grip / neutral-grip lat pulldown',
-    grupo: 'espalda', zona: 'Dorsal · tirón vertical', equipo: 'Máquina de jalón con agarre en V o supino', unidad: 'placa',
+    grupo: 'espalda', zona: 'Dorsal · tirón vertical', equipo: 'Máquina de jalón con agarre en V o supino', unidad: 'discos',
     tecnica: [
       'Con el agarre en V (palmas enfrentadas) o con la barra y palmas hacia vos, manos al ancho de los hombros.',
       'Tirá hasta la parte alta del pecho con los codos pegados al cuerpo.',
@@ -315,7 +314,7 @@ const CATALOGO = [
   },
   {
     id: 'remo-sentado-v', nombre: 'Remo sentado en polea (agarre en V)', tecnico: 'Seated cable row, close grip',
-    grupo: 'espalda', zona: 'Espalda media · remo', equipo: 'Polea baja con agarre en V', unidad: 'placa',
+    grupo: 'espalda', zona: 'Espalda media · remo', equipo: 'Polea baja con agarre en V', unidad: 'discos',
     tecnica: [
       'Sentado con las rodillas apenas dobladas, espalda recta, pecho arriba.',
       'Tirá del agarre hacia la panza llevando los codos hacia atrás, pegados al cuerpo.',
@@ -326,7 +325,7 @@ const CATALOGO = [
   },
   {
     id: 'remo-sentado-ancho', nombre: 'Remo sentado en polea (agarre ancho)', tecnico: 'Seated cable row, wide grip',
-    grupo: 'espalda', zona: 'Espalda alta / hombro posterior', equipo: 'Polea baja con barra larga', unidad: 'placa',
+    grupo: 'espalda', zona: 'Espalda alta / hombro posterior', equipo: 'Polea baja con barra larga', unidad: 'discos',
     tecnica: [
       'En la misma máquina del remo, enganchá la barra larga del jalón.',
       'Agarre ancho, palmas hacia abajo.',
@@ -460,7 +459,7 @@ const CATALOGO = [
   },
   {
     id: 'curl-polea', nombre: 'Curl en polea baja', tecnico: 'Cable curl',
-    grupo: 'biceps', zona: 'Bíceps', equipo: 'Polea baja con barra o cuerda', unidad: 'placa',
+    grupo: 'biceps', zona: 'Bíceps', equipo: 'Polea baja con barra o cuerda', unidad: 'discos',
     tecnica: [
       'Parado frente a la polea baja, agarre con las palmas hacia arriba.',
       'Subí doblando los codos, que quedan pegados al cuerpo.',
@@ -484,7 +483,7 @@ const CATALOGO = [
   },
   {
     id: 'extension-cuadriceps', nombre: 'Extensión de cuádriceps', tecnico: 'Leg extension',
-    grupo: 'piernas', zona: 'Cuádriceps · aislado', equipo: 'Máquina', unidad: 'placa',
+    grupo: 'piernas', zona: 'Cuádriceps · aislado', equipo: 'Máquina', unidad: 'discos',
     tecnica: [
       'Sentado con la espalda apoyada, rodillo sobre los tobillos.',
       'Estirá las piernas hasta arriba y sostené un segundo.',
@@ -495,7 +494,7 @@ const CATALOGO = [
   },
   {
     id: 'curl-femoral-acostado', nombre: 'Curl femoral acostado', tecnico: 'Lying leg curl',
-    grupo: 'piernas', zona: 'Isquiotibiales · aislado', equipo: 'Máquina', unidad: 'placa',
+    grupo: 'piernas', zona: 'Isquiotibiales · aislado', equipo: 'Máquina', unidad: 'discos',
     tecnica: [
       'Boca abajo, rodillo sobre los tobillos, cadera pegada al banco.',
       'Llevá los talones hacia la cola.',
@@ -506,7 +505,7 @@ const CATALOGO = [
   },
   {
     id: 'curl-femoral-sentado', nombre: 'Curl femoral sentado', tecnico: 'Seated leg curl',
-    grupo: 'piernas', zona: 'Isquiotibiales · aislado', equipo: 'Máquina', unidad: 'placa',
+    grupo: 'piernas', zona: 'Isquiotibiales · aislado', equipo: 'Máquina', unidad: 'discos',
     tecnica: [
       'Sentado con el muslo trabado por el almohadón de arriba.',
       'Llevá los talones hacia abajo y atrás, doblando las rodillas.',
@@ -517,7 +516,7 @@ const CATALOGO = [
   },
   {
     id: 'gemelos-pie', nombre: 'Elevación de talones de pie', tecnico: 'Standing calf raise',
-    grupo: 'piernas', zona: 'Gemelos', equipo: 'Máquina de gemelos de pie', unidad: 'placa',
+    grupo: 'piernas', zona: 'Gemelos', equipo: 'Máquina de gemelos de pie', unidad: 'discos',
     tecnica: [
       'Hombros bajo las almohadillas, punta de los pies en el escalón, talones colgando.',
       'Bajá los talones hasta sentir el estiramiento.',
@@ -605,7 +604,7 @@ const CATALOGO = [
   },
   {
     id: 'aductores', nombre: 'Aductores en máquina', tecnico: 'Hip adduction machine',
-    grupo: 'piernas', zona: 'Aductores / abductores', equipo: 'Máquina', unidad: 'placa',
+    grupo: 'piernas', zona: 'Aductores / abductores', equipo: 'Máquina', unidad: 'discos',
     tecnica: [
       'Sentado con las piernas abiertas contra las almohadillas.',
       'Cerrá las piernas apretando la cara interna del muslo.',
@@ -616,7 +615,7 @@ const CATALOGO = [
   },
   {
     id: 'abductores', nombre: 'Abductores en máquina', tecnico: 'Hip abduction machine',
-    grupo: 'piernas', zona: 'Aductores / abductores', equipo: 'Máquina', unidad: 'placa',
+    grupo: 'piernas', zona: 'Aductores / abductores', equipo: 'Máquina', unidad: 'discos',
     tecnica: [
       'Sentado con las almohadillas por fuera de las rodillas.',
       'Abrí las piernas contra la resistencia.',
