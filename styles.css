@@ -128,6 +128,13 @@ input.nota { margin-top: 10px; font-size: 14px; padding: 8px 12px; }
 }
 .serie.hecha .check { background: var(--ok); color: #06240f; border-color: var(--ok); }
 
+.chip-ok { background: var(--ok); color: #06240f; border-color: var(--ok); font-weight: 600; }
+.dia-card.en-curso { border-color: var(--ok); }
+.zona-fila { display: flex; justify-content: space-between; align-items: center; gap: 8px; cursor: pointer; padding: 12px 14px; }
+.zona-fila .zona { margin: 0; }
+button.zona-fila.abierta { background: none; border: 0; width: 100%; padding: 0 0 6px; font: inherit; color: inherit; }
+.unidad-toggle { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.centro-texto { text-align: center; margin-top: 6px; }
 .grupo-cab { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; cursor: pointer; }
 .grupo-cab.abierto { border-color: var(--acento); }
 .grupo-cab .titulo { font-size: 19px; }
