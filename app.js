@@ -9,6 +9,7 @@ const V = {
   rutinas: { diaId: null, catalogo: false, ejercicioId: null, nuevo: null, busqueda: '' },
   hist: { abierto: null, filtro: 'todo' },
   picker: null,            // { titulo, grupo, busqueda, onPick(id), excluir:[] }
+  diaAbierto: null,        // id del día abierto en la pestaña Hoy
 };
 
 function save() { guardarEstado(S); }
@@ -22,7 +23,9 @@ function ej(id) {
   const base = CATALOGO.find(e => e.id === id);
   const extra = S.ejercicios[id];
   if (!base && !extra) return { id, nombre: '(ejercicio eliminado)', grupo: 'pecho', zona: '', unidad: 'kg', tecnica: [], errores: [] };
-  return Object.assign({}, base || {}, extra || {});
+  const e = Object.assign({}, base || {}, extra || {});
+  if (!UNIDADES[e.unidad]) e.unidad = 'discos'; // "placa" de versiones viejas pasa a discos
+  return e;
 }
 
 function todosEjercicios() {
@@ -142,18 +145,9 @@ function sugerencia() {
   return { diaId: dias[0].id, motivo, hechos };
 }
 
-// ---------- sesión en curso ----------
-function iniciarSesion(diaId) {
-  const dia = S.dias.find(d => d.id === diaId);
-  if (!dia) return;
-  const zonas = dia.zonas.map(z => ({ zonaId: z.id, grupo: z.grupo, zona: z.zona, ejercicioId: null, series: [], nota: '', tecnica: false }));
-  const grupos = gruposDeDia(dia);
-  S.enCurso = { diaId, nombreDia: dia.nombre, fecha: hoyISO(), inicio: Date.now(), zonas, grupoAbierto: grupos[0] || null };
-  save();
-  V.tab = 'hoy';
-  render();
-  window.scrollTo(0, 0);
-}
+// ---------- borradores (lo que vas eligiendo en cada día) y sesión en curso ----------
+// S.borradores[diaId] guarda las elecciones de ese día aunque todavía no lo hayas confirmado.
+// S.enCurso = { diaId, fecha, inicio } existe solo después de tocar "Listo, bestia".
 
 // Grupos (secciones) de un día, en orden: primero los declarados, después cualquier otro que aparezca en sus zonas.
 function gruposDeDia(dia) {
@@ -161,6 +155,26 @@ function gruposDeDia(dia) {
   (dia.grupos || []).forEach(g => { if (dia.zonas.some(z => z.grupo === g) && !out.includes(g)) out.push(g); });
   dia.zonas.forEach(z => { if (!out.includes(z.grupo)) out.push(z.grupo); });
   return out;
+}
+
+function borradorDe(diaId) {
+  const dia = S.dias.find(d => d.id === diaId);
+  if (!dia) return null;
+  if (!S.borradores) S.borradores = {};
+  let b = S.borradores[diaId];
+  if (!b) b = S.borradores[diaId] = { zonas: [], grupoAbierto: null, zonaAbierta: null };
+  // Se sincroniza con la rutina: zonas nuevas se agregan, las borradas se van, el orden es el de la rutina.
+  const viejas = b.zonas || [];
+  b.zonas = dia.zonas.map(z => {
+    const v = viejas.find(x => x.zonaId === z.id);
+    return v ? Object.assign(v, { grupo: z.grupo, zona: z.zona }) : { zonaId: z.id, grupo: z.grupo, zona: z.zona, ejercicioId: null, bloques: [], nota: '', tecnica: false };
+  });
+  return b;
+}
+
+function elegidosEn(diaId) {
+  const b = S.borradores && S.borradores[diaId];
+  return b ? (b.zonas || []).filter(z => z.ejercicioId).length : 0;
 }
 
 // Qué ejercicio se eligió la última vez en esta zona de este día.
@@ -171,11 +185,28 @@ function ultimaEleccion(diaId, zonaId) {
   return p ? p.ejercicioId : null;
 }
 
-function elegirEjercicioZona(i, ejercicioId) {
-  const z = S.enCurso.zonas[i];
+function elegirEjercicioZona(diaId, i, ejercicioId) {
+  const b = borradorDe(diaId);
+  const z = b.zonas[i];
   z.ejercicioId = ejercicioId;
   z.bloques = bloquesIniciales(ejercicioId);
   z.tecnica = false;
+  b.zonaAbierta = null;
+}
+
+// "Listo, bestia": este es el día de hoy. Arranca el reloj.
+function confirmarDia(diaId) {
+  const dia = S.dias.find(d => d.id === diaId);
+  if (!dia) return;
+  if (S.enCurso && S.enCurso.diaId !== diaId) {
+    const otro = S.dias.find(d => d.id === S.enCurso.diaId);
+    if (!confirm(`Ya tenés ${otro ? otro.nombre : 'otro día'} en curso. ¿Cambiar a ${dia.nombre}? Lo del otro día no se guarda como sesión.`)) return;
+  }
+  S.enCurso = { diaId, fecha: hoyISO(), inicio: Date.now() };
+  save();
+  toast('¡Vamos, bestia! Arrancaste ' + horaDe(S.enCurso.inicio));
+  render();
+  window.scrollTo(0, 0);
 }
 
 // Agrupa series iguales consecutivas en bloques: [{series, reps, peso}].
@@ -212,9 +243,13 @@ function pasoPeso(e) {
   return 1;
 }
 
+// "Ya está, bestia": guarda la sesión del día en curso.
 function terminarSesion() {
   const c = S.enCurso;
-  const ejercicios = c.zonas.map(z => {
+  if (!c) return;
+  const dia = S.dias.find(d => d.id === c.diaId) || { nombre: 'Gym' };
+  const b = borradorDe(c.diaId) || { zonas: [] };
+  const ejercicios = b.zonas.map(z => {
     const series = [];
     (z.bloques || []).forEach(b => {
       const n = Number(b.series) || 0, reps = Number(b.reps) || 0, peso = Number(String(b.peso).replace(',', '.')) || 0;
@@ -226,8 +261,10 @@ function terminarSesion() {
   const fin = Date.now();
   const inicio = c.inicio || fin;
   const duracionMin = Math.max(1, Math.round((fin - inicio) / 60000));
-  S.sesiones.push({ id: uid(), tipo: 'gym', fecha: c.fecha, diaId: c.diaId, nombreDia: c.nombreDia, ejercicios, duracionMin, horaInicio: horaDe(inicio), horaFin: horaDe(fin) });
+  S.sesiones.push({ id: uid(), tipo: 'gym', fecha: c.fecha, diaId: c.diaId, nombreDia: dia.nombre, ejercicios, duracionMin, horaInicio: horaDe(inicio), horaFin: horaDe(fin) });
   S.enCurso = null;
+  if (S.borradores) delete S.borradores[c.diaId];
+  V.diaAbierto = null;
   save();
   toast('Guardado. ¡Bien ahí, bestia!');
   render();
@@ -238,7 +275,7 @@ function terminarSesion() {
 function render() {
   const app = document.getElementById('app');
   let html = '';
-  if (V.tab === 'hoy') html = S.enCurso ? vistaSesion() : vistaHoy();
+  if (V.tab === 'hoy') html = V.diaAbierto ? vistaDiaHoy(V.diaAbierto) : vistaHoy();
   else if (V.tab === 'rutinas') html = vistaRutinas();
   else if (V.tab === 'historial') html = vistaHistorial();
   else if (V.tab === 'ajustes') html = vistaAjustes();
@@ -267,17 +304,23 @@ function vistaHoy() {
   const diasHtml = S.dias.map(d => {
     const u = ultimaSesionDeDia(d.id);
     const esSug = sug && sug.diaId === d.id;
-    return `<button class="card dia-card ${esSug ? 'sugerido' : ''}" data-action="iniciar" data-dia="${d.id}">
-      <div><div class="titulo">${esc(d.nombre)}</div>
-      <div class="sub">${gruposDeDia(d).map(g => GRUPOS[g]).join(', ')} · ${u ? 'última vez ' + fechaCorta(u.fecha) : 'nunca hecho'}</div></div>
-      <div class="chip ${esSug ? 'chip-acento' : ''}">${esSug ? 'Te toca' : 'Empezar'}</div>
+    const enCurso = S.enCurso && S.enCurso.diaId === d.id;
+    const elegidos = elegidosEn(d.id);
+    let sub = gruposDeDia(d).map(g => GRUPOS[g]).join(', ');
+    if (enCurso) sub = 'En curso desde ' + horaDe(S.enCurso.inicio) + ' · ' + elegidos + ' ejercicios';
+    else if (elegidos) sub += ' · ' + elegidos + ' elegidos';
+    else sub += ' · ' + (u ? 'última vez ' + fechaCorta(u.fecha) : 'nunca hecho');
+    const chip = enCurso ? '<div class="chip chip-ok">En curso</div>' : esSug ? '<div class="chip chip-acento">Te toca</div>' : '<div class="chip">Ver</div>';
+    return `<button class="card dia-card ${esSug && !enCurso ? 'sugerido' : ''} ${enCurso ? 'en-curso' : ''}" data-action="abrir-dia-hoy" data-dia="${d.id}">
+      <div><div class="titulo">${esc(d.nombre)}</div><div class="sub">${esc(sub)}</div></div>
+      ${chip}
     </button>`;
   }).join('');
 
   const otra = V.otraActividad ? formOtraActividad() : `<button class="card dia-card" data-action="abrir-otra"><div><div class="titulo">Otra actividad</div><div class="sub">Pádel, boxeo, natación...</div></div><div class="chip">Anotar</div></button>`;
 
   const ult = S.sesiones.slice().sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
-  const ultHtml = ult ? `<p class="nota-pie">Última: ${fechaLarga(ult.fecha)}, ${esc(ult.tipo === 'gym' ? ult.nombreDia : ult.actividad)}.</p>` : '<p class="nota-pie">Todavía no registraste nada. Empezá por el día que te toca.</p>';
+  const ultHtml = ult ? `<p class="nota-pie">Última: ${fechaLarga(ult.fecha)}, ${esc(ult.tipo === 'gym' ? ult.nombreDia : ult.actividad)}.</p>` : '<p class="nota-pie">Tocá un día para ver sus ejercicios. Cuando arranques, "Listo, bestia".</p>';
 
   return `<header class="encabezado sesion-top"><div><h1>¿Qué hacés hoy?</h1><div class="fecha">${fechaLarga(hoy)}</div></div>
       <button class="link" data-action="actualizar" title="Buscar versión nueva">↻ Actualizar</button></header>
@@ -307,48 +350,62 @@ function formOtraActividad() {
   </div>`;
 }
 
-// ---------- SESIÓN ----------
-function vistaSesion() {
-  const c = S.enCurso;
-  const dia = S.dias.find(d => d.id === c.diaId) || { grupos: [], zonas: [] };
-  const grupos = [];
-  gruposDeDia(dia).forEach(g => grupos.push(g));
-  c.zonas.forEach(z => { if (!grupos.includes(z.grupo)) grupos.push(z.grupo); });
-  const previa = ultimaSesionDeDia(c.diaId);
-  const elegidos = c.zonas.filter(z => z.ejercicioId).length;
+// ---------- DÍA (grupos > partes > ejercicios) ----------
+function vistaDiaHoy(diaId) {
+  const dia = S.dias.find(d => d.id === diaId);
+  if (!dia) { V.diaAbierto = null; return vistaHoy(); }
+  const b = borradorDe(diaId);
+  const enCurso = S.enCurso && S.enCurso.diaId === diaId;
+  const grupos = gruposDeDia(dia);
+  const previa = ultimaSesionDeDia(diaId);
+  const elegidos = b.zonas.filter(z => z.ejercicioId).length;
 
   const secciones = grupos.map(g => {
-    const idx = c.zonas.map((z, i) => z.grupo === g ? i : -1).filter(i => i >= 0);
+    const idx = b.zonas.map((z, i) => z.grupo === g ? i : -1).filter(i => i >= 0);
     if (!idx.length) return '';
-    const elegidas = idx.filter(i => c.zonas[i].ejercicioId).length;
-    const abierto = c.grupoAbierto === g;
-    const puedeRepetir = previa && idx.some(i => { const p = previa.ejercicios.find(x => x.zonaId === c.zonas[i].zonaId); return p && !c.zonas[i].ejercicioId; });
+    const elegidas = idx.filter(i => b.zonas[i].ejercicioId).length;
+    const abierto = b.grupoAbierto === g;
+    const puedeRepetir = previa && idx.some(i => { const p = previa.ejercicios.find(x => x.zonaId === b.zonas[i].zonaId); return p && !b.zonas[i].ejercicioId; });
     return `<button class="card grupo-cab ${abierto ? 'abierto' : ''}" data-action="toggle-grupo" data-g="${g}">
         <span class="titulo">${esc(GRUPOS[g] || g)}</span>
-        <span class="sub">${elegidas}/${idx.length} zonas ${abierto ? '▲' : '▼'}</span>
+        <span class="sub">${elegidas ? elegidas + ' elegido' + (elegidas > 1 ? 's' : '') + ' · ' : ''}${idx.length} partes ${abierto ? '▲' : '▼'}</span>
       </button>
-      ${abierto ? (puedeRepetir ? `<button class="link repetir" data-action="repetir-ultima" data-g="${g}">Repetir lo de la última vez (${fechaCorta(previa.fecha)})</button>` : '') + idx.map(i => cardZona(c.zonas[i], i)).join('') : ''}`;
+      ${abierto ? (puedeRepetir ? `<button class="link repetir" data-action="repetir-ultima" data-g="${g}">Repetir lo de la última vez (${fechaCorta(previa.fecha)})</button>` : '') + idx.map(i => cardZona(diaId, b, b.zonas[i], i)).join('') : ''}`;
   }).join('');
 
-  const transcurrido = Math.round((Date.now() - (c.inicio || Date.now())) / 60000);
-  return `<header class="encabezado sesion-top">
-      <div><h1>${esc(c.nombreDia)}</h1><div class="fecha">Empezaste ${horaDe(c.inicio || Date.now())} · <span id="transcurrido">${fmtMin(transcurrido)}</span> · ${elegidos} ejercicios</div></div>
+  let estado;
+  if (enCurso) estado = `En curso desde ${horaDe(S.enCurso.inicio)} · <span id="transcurrido">${fmtMin((Date.now() - S.enCurso.inicio) / 60000)}</span> · ${elegidos} ejercicios`;
+  else estado = elegidos ? `${elegidos} ejercicio${elegidos > 1 ? 's' : ''} elegido${elegidos > 1 ? 's' : ''} · todavía no arrancaste` : 'Tocá un grupo para ver sus partes y elegir ejercicios';
+
+  const botones = enCurso
+    ? `<div class="fila fin-sesion">
+        <button class="btn secundario" data-action="cancelar-sesion">Cancelar</button>
+        <button class="btn" data-action="terminar-sesion">Ya está, bestia 💪</button>
+      </div>`
+    : `<div class="fin-sesion">
+        <button class="btn" data-action="confirmar-dia">Listo, bestia 💪</button>
+        <div class="sub centro-texto">Marca este día como el de hoy y arranca el reloj. Podés seguir eligiendo ejercicios después.</div>
+      </div>`;
+
+  return `<header class="encabezado">
+      <button class="link" data-action="volver-hoy">← Hoy</button>
+      <h1>${esc(dia.nombre)}</h1><div class="fecha">${estado}</div>
     </header>
     ${secciones}
-    <div class="fila fin-sesion">
-      <button class="btn secundario" data-action="cancelar-sesion">Cancelar</button>
-      <button class="btn" data-action="terminar-sesion">Listo, bestia 💪</button>
-    </div>`;
+    ${botones}`;
 }
 
-function cardZona(z, i) {
-  const dia = S.dias.find(d => d.id === S.enCurso.diaId);
+function cardZona(diaId, b, z, i) {
+  const dia = S.dias.find(d => d.id === diaId);
   const def = dia && dia.zonas.find(x => x.id === z.zonaId);
   const opciones = def ? def.opciones.slice() : [];
-  const ultimaId = ultimaEleccion(S.enCurso.diaId, z.zonaId);
+  const ultimaId = ultimaEleccion(diaId, z.zonaId);
 
-  // Zona sin ejercicio elegido: se muestran las opciones.
+  // Parte sin ejercicio elegido: fila cerrada, o abierta con sus ejercicios.
   if (!z.ejercicioId) {
+    if (b.zonaAbierta !== z.zonaId) {
+      return `<button class="card zona-fila" data-action="toggle-zona" data-i="${i}"><span class="zona">${esc(z.zona)}</span><span class="chip">Elegir ▾</span></button>`;
+    }
     const lista = opciones.map(id => {
       const o = ej(id);
       const u = ultimaVezEjercicio(id);
@@ -357,7 +414,7 @@ function cardZona(z, i) {
         <small>${u ? 'Última vez: ' + fmtSeries(u.series, o) : 'Nunca hecho'}</small></button>`;
     }).join('');
     return `<div class="card zona-card">
-      <div class="zona">${esc(z.zona)}</div>
+      <button class="zona-fila abierta" data-action="toggle-zona" data-i="${i}"><span class="zona">${esc(z.zona)}</span><span class="chip">Cerrar ▴</span></button>
       <div class="opciones">${lista}
         <button class="opcion tenue" data-action="buscar-ejercicio-zona" data-i="${i}"><span>Buscar otro en el catálogo…</span></button>
       </div>
@@ -365,9 +422,14 @@ function cardZona(z, i) {
   }
 
   const e = ej(z.ejercicioId);
-  const u = e.unidad === 'corporal' ? '+kg' : unidadCorta(e);
+  const u = e.unidad === 'corporal' ? '+kg' : (e.unidad === 'discos' ? 'Discos' : 'Kg');
   const ultima = ultimaVezEjercicio(e.id);
   const ultimaHtml = ultima ? `<div class="sub">Última vez (${fechaCorta(ultima.fecha)}): ${fmtSeries(ultima.series, e)}</div>` : '';
+  const unidadHtml = e.unidad === 'corporal' ? '<div class="sub">Peso corporal. Si le agregás carga, anotá los kilos extra.</div>' : `<div class="unidad-toggle">
+      <span class="sub">Carga en</span>
+      <button class="chip ${e.unidad === 'kg' ? 'chip-acento' : ''}" data-action="unidad-ej" data-id="${e.id}" data-val="kg">Kg</button>
+      <button class="chip ${e.unidad === 'discos' ? 'chip-acento' : ''}" data-action="unidad-ej" data-id="${e.id}" data-val="discos">Discos</button>
+    </div>`;
 
   const stepper = (k, campo, valor, etiqueta) => `<div class="stepper">
       <span class="etq">${etiqueta}</span>
@@ -401,11 +463,12 @@ function cardZona(z, i) {
       <div class="titulo">${esc(e.nombre)}${e.evitar ? ' <span class="aviso">evitar</span>' : ''}</div>
       <div class="acciones">
         <button class="link" data-action="toggle-tecnica" data-i="${i}">${z.tecnica ? 'Ocultar' : 'Técnica'}</button>
-        <button class="link" data-action="cambiar-ejercicio" data-i="${i}">Cambiar</button>
+        <button class="link peligro" data-action="quitar-ejercicio" data-i="${i}">Quitar</button>
       </div>
     </div>
     ${tecnica}
     ${ultimaHtml}
+    ${unidadHtml}
     <div class="bloques">${bloques}</div>
     <button class="btn secundario chico ancho" data-action="agregar-bloque" data-i="${i}">+ Más series</button>
     <input class="nota" type="text" data-zona="${i}" data-campo="nota" value="${esc(z.nota || '')}" placeholder="Nota (opcional)">
@@ -682,7 +745,9 @@ document.addEventListener('click', ev => {
   const i = Number(el.dataset.i), j = Number(el.dataset.j);
 
   // Hoy
-  if (a === 'iniciar') return iniciarSesion(el.dataset.dia);
+  if (a === 'abrir-dia-hoy') { V.diaAbierto = el.dataset.dia; const b = borradorDe(V.diaAbierto); if (b && !b.grupoAbierto) { const d = S.dias.find(x => x.id === V.diaAbierto); b.grupoAbierto = gruposDeDia(d)[0] || null; } render(); return window.scrollTo(0, 0); }
+  if (a === 'volver-hoy') { V.diaAbierto = null; render(); return window.scrollTo(0, 0); }
+  if (a === 'confirmar-dia') return confirmarDia(V.diaAbierto);
   if (a === 'abrir-otra') { V.otraActividad = { actividad: 'Pádel', nombre: '', duracion: '', nota: '', fecha: hoyISO() }; return render(); }
   if (a === 'cerrar-otra') { V.otraActividad = null; return render(); }
   if (a === 'otra-act') { V.otraActividad.actividad = el.dataset.val; return render(); }
@@ -693,19 +758,21 @@ document.addEventListener('click', ev => {
     V.otraActividad = null; save(); toast('Actividad guardada'); return render();
   }
 
-  // Sesión
-  if (a === 'toggle-grupo') { S.enCurso.grupoAbierto = S.enCurso.grupoAbierto === el.dataset.g ? null : el.dataset.g; save(); return render(); }
-  if (a === 'repetir-ultima') {
-    const previa = ultimaSesionDeDia(S.enCurso.diaId);
-    if (previa) S.enCurso.zonas.forEach((z, k) => {
+  // Día abierto (elección de ejercicios y carga de series)
+  const bd = V.diaAbierto ? borradorDe(V.diaAbierto) : null;
+  if (a === 'toggle-grupo' && bd) { bd.grupoAbierto = bd.grupoAbierto === el.dataset.g ? null : el.dataset.g; save(); return render(); }
+  if (a === 'toggle-zona' && bd) { const z = bd.zonas[i]; bd.zonaAbierta = bd.zonaAbierta === z.zonaId ? null : z.zonaId; save(); return render(); }
+  if (a === 'repetir-ultima' && bd) {
+    const previa = ultimaSesionDeDia(V.diaAbierto);
+    if (previa) bd.zonas.forEach((z, k) => {
       if (z.grupo !== el.dataset.g || z.ejercicioId) return;
       const p = previa.ejercicios.find(x => x.zonaId === z.zonaId);
-      if (p && !ej(p.ejercicioId).evitar) elegirEjercicioZona(k, p.ejercicioId);
+      if (p && !ej(p.ejercicioId).evitar) elegirEjercicioZona(V.diaAbierto, k, p.ejercicioId);
     });
     save(); return render();
   }
-  if (a === 'bloque-step') {
-    const z = S.enCurso.zonas[i];
+  if (a === 'bloque-step' && bd) {
+    const z = bd.zonas[i];
     const b = z.bloques[Number(el.dataset.k)];
     const campo = el.dataset.campo;
     const paso = campo === 'peso' ? pasoPeso(ej(z.ejercicioId)) : 1;
@@ -715,31 +782,39 @@ document.addEventListener('click', ev => {
     b[campo] = nuevo;
     save(); return render();
   }
-  if (a === 'agregar-bloque') {
-    const z = S.enCurso.zonas[i];
+  if (a === 'agregar-bloque' && bd) {
+    const z = bd.zonas[i];
     const ult = z.bloques[z.bloques.length - 1];
     z.bloques.push(ult ? { series: 3, reps: ult.reps, peso: ult.peso } : { series: 3, reps: 10, peso: 0 });
     save(); return render();
   }
-  if (a === 'quitar-bloque') { S.enCurso.zonas[i].bloques.splice(Number(el.dataset.k), 1); save(); return render(); }
-  if (a === 'toggle-tecnica') { S.enCurso.zonas[i].tecnica = !S.enCurso.zonas[i].tecnica; return render(); }
-  if (a === 'cambiar-ejercicio') {
-    const z = S.enCurso.zonas[i];
-    z.ejercicioId = null; z.bloques = []; z.tecnica = false; save(); return render();
+  if (a === 'quitar-bloque' && bd) { bd.zonas[i].bloques.splice(Number(el.dataset.k), 1); save(); return render(); }
+  if (a === 'toggle-tecnica' && bd) { bd.zonas[i].tecnica = !bd.zonas[i].tecnica; return render(); }
+  if (a === 'quitar-ejercicio' && bd) {
+    const z = bd.zonas[i];
+    z.ejercicioId = null; z.bloques = []; z.tecnica = false; bd.zonaAbierta = z.zonaId; save(); return render();
   }
-  if (a === 'elegir-ejercicio') { elegirEjercicioZona(i, el.dataset.id); save(); return render(); }
-  if (a === 'buscar-ejercicio-zona') {
+  if (a === 'elegir-ejercicio' && bd) { elegirEjercicioZona(V.diaAbierto, i, el.dataset.id); save(); return render(); }
+  if (a === 'unidad-ej') {
+    S.ejercicios[el.dataset.id] = Object.assign({}, S.ejercicios[el.dataset.id] || {}, { unidad: el.dataset.val });
+    save(); return render();
+  }
+  if (a === 'buscar-ejercicio-zona' && bd) {
+    const diaId = V.diaAbierto;
     return abrirPicker('Elegir ejercicio', '', [], id => {
-      elegirEjercicioZona(i, id);
-      // Se agrega como opción de la zona en la rutina para la próxima.
-      const dia = S.dias.find(d => d.id === S.enCurso.diaId);
-      const def = dia && dia.zonas.find(x => x.id === S.enCurso.zonas[i].zonaId);
+      elegirEjercicioZona(diaId, i, id);
+      // Se agrega como opción de la parte en la rutina para la próxima.
+      const dia = S.dias.find(d => d.id === diaId);
+      const def = dia && dia.zonas.find(x => x.id === borradorDe(diaId).zonas[i].zonaId);
       if (def && !def.opciones.includes(id)) def.opciones.push(id);
       save();
     });
   }
   if (a === 'hablar') return hablar(textoTecnica(ej(el.dataset.id)));
-  if (a === 'cancelar-sesion') { if (confirm('¿Descartar esta sesión? No se guarda nada.')) { S.enCurso = null; save(); render(); } return; }
+  if (a === 'cancelar-sesion') {
+    if (!confirm('¿Cancelar el día en curso? No se guarda como sesión. Lo que elegiste queda para la próxima.')) return;
+    S.enCurso = null; save(); return render();
+  }
   if (a === 'terminar-sesion') return terminarSesion();
 
   // Rutinas
@@ -838,8 +913,8 @@ document.addEventListener('click', ev => {
 // Inputs: se actualiza el estado sin volver a dibujar, para no perder el foco.
 document.addEventListener('input', ev => {
   const t = ev.target;
-  if (t.dataset.zona !== undefined && S.enCurso) {
-    const z = S.enCurso.zonas[Number(t.dataset.zona)];
+  if (t.dataset.zona !== undefined && V.diaAbierto) {
+    const z = borradorDe(V.diaAbierto).zonas[Number(t.dataset.zona)];
     if (t.dataset.campo === 'nota') z.nota = t.value;
     else z.bloques[Number(t.dataset.bloque)][t.dataset.campo] = t.value;
     save(); return;
@@ -847,7 +922,7 @@ document.addEventListener('input', ev => {
   if (t.dataset.campoOtra !== undefined) { V.otraActividad[t.dataset.campoOtra] = t.value; return; }
   if (t.dataset.busqueda === 'catalogo') { V.rutinas.busqueda = t.value; return renderConservandoFoco(t); }
   if (t.dataset.busqueda === 'picker') { V.picker.busqueda = t.value; return renderConservandoFoco(t); }
-  if (t.dataset.diaNombre) { const d = S.dias.find(x => x.id === t.dataset.diaNombre); d.nombre = t.value; if (S.enCurso && S.enCurso.diaId === d.id) S.enCurso.nombreDia = d.nombre; save(); return; }
+  if (t.dataset.diaNombre) { const d = S.dias.find(x => x.id === t.dataset.diaNombre); d.nombre = t.value; save(); return; }
   if (t.dataset.nuevo) { V.rutinas.nuevo[t.dataset.nuevo] = t.value; if (t.dataset.nuevo === 'grupo') render(); return; }
   if (t.dataset.perfil) {
     const k = t.dataset.perfil;
@@ -904,6 +979,7 @@ window.addEventListener('popstate', () => {
   else if (V.rutinas.ejercicioId) V.rutinas.ejercicioId = null;
   else if (V.rutinas.catalogo) V.rutinas.catalogo = false;
   else if (V.rutinas.diaId) V.rutinas.diaId = null;
+  else if (V.diaAbierto) V.diaAbierto = null;
   else if (V.otraActividad) V.otraActividad = null;
   else if (V.tab !== 'hoy') V.tab = 'hoy';
   else cerro = false;
