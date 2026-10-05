@@ -13,12 +13,13 @@ App personal para registrar entrenamientos. HTML, CSS y JavaScript puros: no hay
 
 ## Cómo funciona
 
-- **Hoy**: elegís el día (Pecho y tríceps, Espalda y bíceps, Piernas) u otra actividad. La app sugiere el que
-  más te falta según el objetivo semanal (2 pecho, 2 espalda, 1 piernas) y lo que ya hiciste.
-- **Sesión**: cada día tiene grupos desplegables y, dentro, zonas. En cada zona elegís un ejercicio y cargás
-  bloques de series × reps × peso con botones de más y menos ("+ Más series" agrega otro bloque, por ejemplo
-  1×8 con 10 kg de calentamiento y 3×6 con 40 kg). Al guardar, cada bloque se expande en series individuales.
-  Se marca la hora de inicio al elegir el día y la de fin al tocar "Listo, bestia".
+- **Hoy**: lista de días (Pecho y tríceps, Espalda y bíceps, Piernas) y otra actividad. La app marca "Te toca"
+  según el objetivo semanal (2 pecho, 2 espalda, 1 piernas) y lo que ya hiciste. Tocar un día solo lo abre para mirar.
+- **Día abierto**: grupos desplegables > partes > ejercicios. Tocás un ejercicio y recién ahí aparecen los bloques de
+  series × reps × carga (botones +/−, "+ Más series" agrega otro bloque, "Quitar" lo deselecciona). La carga se
+  elige en Kg o Discos y la app se acuerda por ejercicio. Las elecciones quedan guardadas como borrador por día.
+- **Listo, bestia** confirma que ese es el día de hoy y arranca el reloj. Mientras está en curso, el botón pasa a
+  **Ya está, bestia**, que guarda la sesión (cada bloque se expande en series individuales) con hora de inicio y fin.
 - **Rutinas**: editar zonas y opciones de cada día, catálogo con técnica, unidad por ejercicio y ejercicios propios.
 - **Historial**: sesiones por semana con tiempo total.
 - **Ajustes**: perfil, referencia de calorías (Mifflin-St Jeor), peso corporal, respaldo.
