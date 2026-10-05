@@ -1,6 +1,6 @@
 {
-  "name": "Gimnasio",
-  "short_name": "Gimnasio",
+  "name": "Gym",
+  "short_name": "Gym",
   "description": "Registro de entrenamientos",
   "start_url": "./index.html",
   "scope": "./",
