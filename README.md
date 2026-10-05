@@ -32,4 +32,4 @@ App personal para registrar entrenamientos. HTML, CSS y JavaScript puros: no hay
 Subir la carpeta tal cual a cualquier hosting estático (GitHub Pages, Netlify, Cloudflare Pages).
 Al abrir la URL en Chrome de Android: menú ⋮ > "Agregar a pantalla de inicio". Funciona sin internet después de la primera carga.
 
-Si se cambia algún archivo, subir la carpeta de nuevo y cambiar el número de `CACHE` en `sw.js` para que el celular tome la versión nueva.
+Para publicar cambios: subir `VERSION_APP` en `data.js` y `CACHE` en `sw.js`, y correr `deploy.ps1` (hace un solo commit con todo lo que cambió y pide la construcción de Pages). En el celular, tocar "Actualizar".
