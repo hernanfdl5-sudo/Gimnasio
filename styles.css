@@ -130,9 +130,31 @@ input.nota { margin-top: 10px; font-size: 14px; padding: 8px 12px; }
 
 .chip-ok { background: var(--ok); color: #06240f; border-color: var(--ok); font-weight: 600; }
 .dia-card.en-curso { border-color: var(--ok); }
-.zona-fila { display: flex; justify-content: space-between; align-items: center; gap: 8px; cursor: pointer; padding: 12px 14px; }
-.zona-fila .zona { margin: 0; }
-button.zona-fila.abierta { background: none; border: 0; width: 100%; padding: 0 0 6px; font: inherit; color: inherit; }
+/* Partes del día y sus ejercicios */
+.parte-cab { display: flex; align-items: center; gap: 10px; }
+.parte-nombre { flex: 1; min-width: 0; background: none; border: 0; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.parte-nombre .zona { margin: 0; }
+.parte-nombre small { color: var(--texto-2); font-size: 13px; }
+.zona-card.completada { opacity: .6; }
+.zona-card.completada .zona { color: var(--ok); }
+.tick {
+  width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+  border: 2px solid var(--borde); background: transparent; color: transparent;
+  font-size: 20px; font-weight: 700; cursor: pointer; line-height: 1;
+}
+.tick.on { background: var(--acento); border-color: var(--acento); color: var(--acento-texto); }
+.tick.hecho { background: var(--ok); border-color: var(--ok); color: #06240f; }
+.tick.grande { width: 44px; height: 44px; }
+.tick.grande.on { background: var(--ok); border-color: var(--ok); color: #06240f; }
+.ej-lista { margin-top: 10px; }
+.ej-fila { border-top: 1px solid var(--borde); padding: 8px 0; }
+.ej-cab { display: flex; align-items: center; gap: 10px; }
+.ej-nombre { flex: 1; min-width: 0; background: none; border: 0; padding: 4px 0; text-align: left; font: inherit; color: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.ej-nombre small { color: var(--texto-2); font-size: 13px; }
+.ej-fila.sel { background: linear-gradient(90deg, rgba(79,140,255,.08), transparent); margin: 0 -14px; padding: 8px 14px; }
+.ej-fila.hecho .ej-nombre > span { color: var(--ok); }
+.editor { margin-top: 6px; }
+.ej-lista .opcion.tenue { margin-top: 8px; width: 100%; }
 .unidad-toggle { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .centro-texto { text-align: center; margin-top: 6px; }
 .grupo-cab { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; cursor: pointer; }
