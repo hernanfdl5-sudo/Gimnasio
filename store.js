@@ -11,6 +11,7 @@ function estadoInicial() {
     ejercicios: {},
     dias: JSON.parse(JSON.stringify(DIAS_DEFAULT)),
     sesiones: [],
+    borradores: {},
     enCurso: null,
     pesoCorporal: [],
   };
@@ -26,7 +27,15 @@ function cargarEstado() {
     if (!Array.isArray(estado.dias) || estado.dias.some(d => !Array.isArray(d.zonas))) {
       estado.dias = JSON.parse(JSON.stringify(DIAS_DEFAULT));
     }
-    if (estado.enCurso && (!Array.isArray(estado.enCurso.zonas) || estado.enCurso.zonas.some(z => z.ejercicioId && !Array.isArray(z.bloques)))) estado.enCurso = null;
+    if (!estado.borradores || typeof estado.borradores !== 'object') estado.borradores = {};
+    // Migración: la sesión en curso de versiones viejas tenía las zonas adentro; ahora van en borradores.
+    if (estado.enCurso && Array.isArray(estado.enCurso.zonas)) {
+      const c = estado.enCurso;
+      const zonas = c.zonas.filter(z => !z.ejercicioId || Array.isArray(z.bloques));
+      estado.borradores[c.diaId] = { zonas, grupoAbierto: c.grupoAbierto || null, zonaAbierta: null };
+      estado.enCurso = { diaId: c.diaId, fecha: c.fecha, inicio: c.inicio };
+    }
+    if (estado.enCurso && !estado.enCurso.diaId) estado.enCurso = null;
     return estado;
   } catch (e) {
     console.error('No se pudo leer el estado guardado', e);
