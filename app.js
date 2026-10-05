@@ -166,32 +166,41 @@ function borradorDe(diaId) {
   // Se sincroniza con la rutina: zonas nuevas se agregan, las borradas se van, el orden es el de la rutina.
   const viejas = b.zonas || [];
   b.zonas = dia.zonas.map(z => {
-    const v = viejas.find(x => x.zonaId === z.id);
-    return v ? Object.assign(v, { grupo: z.grupo, zona: z.zona }) : { zonaId: z.id, grupo: z.grupo, zona: z.zona, ejercicioId: null, bloques: [], nota: '', tecnica: false };
+    let v = viejas.find(x => x.zonaId === z.id);
+    if (!v) v = { zonaId: z.id, grupo: z.grupo, zona: z.zona, ejercicios: [], completada: false, abierta: false, infoId: null };
+    // Versión anterior: un solo ejercicio por zona.
+    if (!Array.isArray(v.ejercicios)) {
+      v.ejercicios = v.ejercicioId ? [{ ejercicioId: v.ejercicioId, bloques: v.bloques || [], nota: v.nota || '', hecho: false }] : [];
+      delete v.ejercicioId; delete v.bloques; delete v.nota; delete v.tecnica;
+    }
+    return Object.assign(v, { grupo: z.grupo, zona: z.zona });
   });
   return b;
 }
 
 function elegidosEn(diaId) {
   const b = S.borradores && S.borradores[diaId];
-  return b ? (b.zonas || []).filter(z => z.ejercicioId).length : 0;
+  return b ? (b.zonas || []).reduce((n, z) => n + (z.ejercicios || []).length, 0) : 0;
 }
 
-// Qué ejercicio se eligió la última vez en esta zona de este día.
+// Qué ejercicios se hicieron la última vez en esta zona de este día (en orden).
 function ultimaEleccion(diaId, zonaId) {
   const previa = ultimaSesionDeDia(diaId);
-  if (!previa) return null;
-  const p = previa.ejercicios.find(x => x.zonaId === zonaId);
-  return p ? p.ejercicioId : null;
+  if (!previa) return [];
+  return previa.ejercicios.filter(x => x.zonaId === zonaId).map(x => x.ejercicioId);
 }
 
-function elegirEjercicioZona(diaId, i, ejercicioId) {
-  const b = borradorDe(diaId);
-  const z = b.zonas[i];
-  z.ejercicioId = ejercicioId;
-  z.bloques = bloquesIniciales(ejercicioId);
-  z.tecnica = false;
-  b.zonaAbierta = null;
+// Tilde de un ejercicio: lo agrega a la zona; si ya estaba, lo saca (o lo vuelve a abrir si estaba hecho).
+function tildarEjercicio(diaId, i, ejercicioId) {
+  const z = borradorDe(diaId).zonas[i];
+  const k = z.ejercicios.findIndex(x => x.ejercicioId === ejercicioId);
+  if (k >= 0) {
+    if (z.ejercicios[k].hecho) z.ejercicios[k].hecho = false;
+    else z.ejercicios.splice(k, 1);
+  } else {
+    z.ejercicios.push({ ejercicioId, bloques: bloquesIniciales(ejercicioId), nota: '', hecho: false });
+  }
+  z.infoId = null;
 }
 
 // "Listo, bestia": este es el día de hoy. Arranca el reloj.
@@ -249,14 +258,15 @@ function terminarSesion() {
   if (!c) return;
   const dia = S.dias.find(d => d.id === c.diaId) || { nombre: 'Gym' };
   const b = borradorDe(c.diaId) || { zonas: [] };
-  const ejercicios = b.zonas.map(z => {
+  const ejercicios = [];
+  b.zonas.forEach(z => (z.ejercicios || []).forEach(x => {
     const series = [];
-    (z.bloques || []).forEach(b => {
-      const n = Number(b.series) || 0, reps = Number(b.reps) || 0, peso = Number(String(b.peso).replace(',', '.')) || 0;
+    (x.bloques || []).forEach(bl => {
+      const n = Number(bl.series) || 0, reps = Number(bl.reps) || 0, peso = Number(String(bl.peso).replace(',', '.')) || 0;
       if (n > 0 && reps > 0) for (let k = 0; k < n; k++) series.push({ peso, reps });
     });
-    return { zonaId: z.zonaId, ejercicioId: z.ejercicioId, nota: z.nota || '', series };
-  }).filter(e => e.ejercicioId && e.series.length);
+    if (series.length) ejercicios.push({ zonaId: z.zonaId, ejercicioId: x.ejercicioId, nota: x.nota || '', series });
+  }));
   if (!ejercicios.length && !confirm('No cargaste ninguna serie. ¿Guardar la sesión vacía igual?')) return;
   const fin = Date.now();
   const inicio = c.inicio || fin;
@@ -358,19 +368,19 @@ function vistaDiaHoy(diaId) {
   const enCurso = S.enCurso && S.enCurso.diaId === diaId;
   const grupos = gruposDeDia(dia);
   const previa = ultimaSesionDeDia(diaId);
-  const elegidos = b.zonas.filter(z => z.ejercicioId).length;
+  const elegidos = elegidosEn(diaId);
 
   const secciones = grupos.map(g => {
     const idx = b.zonas.map((z, i) => z.grupo === g ? i : -1).filter(i => i >= 0);
     if (!idx.length) return '';
-    const elegidas = idx.filter(i => b.zonas[i].ejercicioId).length;
+    const completadas = idx.filter(i => b.zonas[i].completada).length;
     const abierto = b.grupoAbierto === g;
-    const puedeRepetir = previa && idx.some(i => { const p = previa.ejercicios.find(x => x.zonaId === b.zonas[i].zonaId); return p && !b.zonas[i].ejercicioId; });
-    return `<button class="card grupo-cab ${abierto ? 'abierto' : ''}" data-action="toggle-grupo" data-g="${g}">
+    const puedeRepetir = previa && idx.some(i => ultimaEleccion(diaId, b.zonas[i].zonaId).some(id => !b.zonas[i].ejercicios.some(x => x.ejercicioId === id)));
+    return `<button class="card grupo-cab ${abierto ? 'abierto' : ''} ${completadas === idx.length ? 'completo' : ''}" data-action="toggle-grupo" data-g="${g}">
         <span class="titulo">${esc(GRUPOS[g] || g)}</span>
-        <span class="sub">${elegidas ? elegidas + ' elegido' + (elegidas > 1 ? 's' : '') + ' · ' : ''}${idx.length} partes ${abierto ? '▲' : '▼'}</span>
+        <span class="sub">${completadas}/${idx.length} partes ${completadas === idx.length ? '✓' : abierto ? '▲' : '▼'}</span>
       </button>
-      ${abierto ? (puedeRepetir ? `<button class="link repetir" data-action="repetir-ultima" data-g="${g}">Repetir lo de la última vez (${fechaCorta(previa.fecha)})</button>` : '') + idx.map(i => cardZona(diaId, b, b.zonas[i], i)).join('') : ''}`;
+      ${abierto ? (puedeRepetir ? `<button class="link repetir" data-action="repetir-ultima" data-g="${g}">Marcar lo de la última vez (${fechaCorta(previa.fecha)})</button>` : '') + idx.map(i => cardZona(diaId, b, b.zonas[i], i)).join('') : ''}`;
   }).join('');
 
   let estado;
@@ -395,59 +405,9 @@ function vistaDiaHoy(diaId) {
     ${botones}`;
 }
 
-function cardZona(diaId, b, z, i) {
-  const dia = S.dias.find(d => d.id === diaId);
-  const def = dia && dia.zonas.find(x => x.id === z.zonaId);
-  const opciones = def ? def.opciones.slice() : [];
-  const ultimaId = ultimaEleccion(diaId, z.zonaId);
-
-  // Parte sin ejercicio elegido: fila cerrada, o abierta con sus ejercicios.
-  if (!z.ejercicioId) {
-    if (b.zonaAbierta !== z.zonaId) {
-      return `<button class="card zona-fila" data-action="toggle-zona" data-i="${i}"><span class="zona">${esc(z.zona)}</span><span class="chip">Elegir ▾</span></button>`;
-    }
-    const lista = opciones.map(id => {
-      const o = ej(id);
-      const u = ultimaVezEjercicio(id);
-      return `<button class="opcion ${id === ultimaId ? 'activa' : ''}" data-action="elegir-ejercicio" data-i="${i}" data-id="${id}">
-        <span>${esc(o.nombre)}${o.evitar ? ' <span class="aviso">evitar</span>' : ''}${id === ultimaId ? ' <span class="tag">última vez</span>' : ''}</span>
-        <small>${u ? 'Última vez: ' + fmtSeries(u.series, o) : 'Nunca hecho'}</small></button>`;
-    }).join('');
-    return `<div class="card zona-card">
-      <button class="zona-fila abierta" data-action="toggle-zona" data-i="${i}"><span class="zona">${esc(z.zona)}</span><span class="chip">Cerrar ▴</span></button>
-      <div class="opciones">${lista}
-        <button class="opcion tenue" data-action="buscar-ejercicio-zona" data-i="${i}"><span>Buscar otro en el catálogo…</span></button>
-      </div>
-    </div>`;
-  }
-
-  const e = ej(z.ejercicioId);
-  const u = e.unidad === 'corporal' ? '+kg' : (e.unidad === 'discos' ? 'Discos' : 'Kg');
-  const ultima = ultimaVezEjercicio(e.id);
-  const ultimaHtml = ultima ? `<div class="sub">Última vez (${fechaCorta(ultima.fecha)}): ${fmtSeries(ultima.series, e)}</div>` : '';
-  const unidadHtml = e.unidad === 'corporal' ? '<div class="sub">Peso corporal. Si le agregás carga, anotá los kilos extra.</div>' : `<div class="unidad-toggle">
-      <span class="sub">Carga en</span>
-      <button class="chip ${e.unidad === 'kg' ? 'chip-acento' : ''}" data-action="unidad-ej" data-id="${e.id}" data-val="kg">Kg</button>
-      <button class="chip ${e.unidad === 'discos' ? 'chip-acento' : ''}" data-action="unidad-ej" data-id="${e.id}" data-val="discos">Discos</button>
-    </div>`;
-
-  const stepper = (k, campo, valor, etiqueta) => `<div class="stepper">
-      <span class="etq">${etiqueta}</span>
-      <div class="ctrl">
-        <button data-action="bloque-step" data-i="${i}" data-k="${k}" data-campo="${campo}" data-dir="-1" aria-label="Menos">−</button>
-        <input type="text" inputmode="decimal" data-zona="${i}" data-bloque="${k}" data-campo="${campo}" value="${esc(valor)}">
-        <button data-action="bloque-step" data-i="${i}" data-k="${k}" data-campo="${campo}" data-dir="1" aria-label="Más">+</button>
-      </div>
-    </div>`;
-  const bloques = (z.bloques || []).map((b, k) => `<div class="bloque">
-      ${stepper(k, 'series', b.series, 'Series')}
-      <span class="x">×</span>
-      ${stepper(k, 'reps', b.reps, 'Reps')}
-      ${stepper(k, 'peso', b.peso, u)}
-      <button class="quitar-bloque" data-action="quitar-bloque" data-i="${i}" data-k="${k}" aria-label="Quitar">×</button>
-    </div>`).join('');
-
-  const tecnica = z.tecnica ? `<div class="tecnica">
+// Panel de técnica de un ejercicio (muñequito, pasos, errores, voz, video).
+function panelTecnica(e) {
+  return `<div class="tecnica">
       ${animacionDe(e.id) ? `<div class="anim" data-anim="${e.id}"></div>` : ''}
       <ol>${(e.tecnica || []).map(p => `<li>${esc(p)}</li>`).join('')}</ol>
       ${(e.errores || []).length ? `<div class="errores"><b>Errores comunes</b><ul>${e.errores.map(p => `<li>${esc(p)}</li>`).join('')}</ul></div>` : ''}
@@ -455,23 +415,98 @@ function cardZona(diaId, b, z, i) {
         <button class="btn secundario chico" data-action="hablar" data-id="${e.id}">🔊 Escuchar</button>
         <a class="btn secundario chico" href="${urlVideo(e)}" target="_blank" rel="noopener">▶ Video</a>
       </div>
-    </div>` : '';
+    </div>`;
+}
 
-  return `<div class="card zona-card elegida">
-    <div class="zona">${esc(z.zona)} ✓</div>
-    <div class="slot-cab">
-      <div class="titulo">${esc(e.nombre)}${e.evitar ? ' <span class="aviso">evitar</span>' : ''}</div>
-      <div class="acciones">
-        <button class="link" data-action="toggle-tecnica" data-i="${i}">${z.tecnica ? 'Ocultar' : 'Técnica'}</button>
-        <button class="link peligro" data-action="quitar-ejercicio" data-i="${i}">Quitar</button>
+// Editor de bloques (series × reps × carga) de un ejercicio tildado. i = zona, k = ejercicio dentro de la zona.
+function editorEjercicio(i, k, x, e) {
+  const u = e.unidad === 'corporal' ? '+kg' : (e.unidad === 'discos' ? 'Discos' : 'Kg');
+  const stepper = (bi, campo, valor, etiqueta) => `<div class="stepper">
+      <span class="etq">${etiqueta}</span>
+      <div class="ctrl">
+        <button data-action="bloque-step" data-i="${i}" data-k="${k}" data-bi="${bi}" data-campo="${campo}" data-dir="-1" aria-label="Menos">−</button>
+        <input type="text" inputmode="decimal" data-zona="${i}" data-ej="${k}" data-bloque="${bi}" data-campo="${campo}" value="${esc(valor)}">
+        <button data-action="bloque-step" data-i="${i}" data-k="${k}" data-bi="${bi}" data-campo="${campo}" data-dir="1" aria-label="Más">+</button>
       </div>
-    </div>
-    ${tecnica}
-    ${ultimaHtml}
+    </div>`;
+  const bloques = (x.bloques || []).map((bl, bi) => `<div class="bloque">
+      ${stepper(bi, 'series', bl.series, 'Series')}
+      <span class="x">×</span>
+      ${stepper(bi, 'reps', bl.reps, 'Reps')}
+      ${stepper(bi, 'peso', bl.peso, u)}
+      <button class="quitar-bloque" data-action="quitar-bloque" data-i="${i}" data-k="${k}" data-bi="${bi}" aria-label="Quitar bloque">×</button>
+    </div>`).join('');
+  const unidadHtml = e.unidad === 'corporal' ? '<div class="sub">Peso corporal. Si le agregás carga, anotá los kilos extra.</div>' : `<div class="unidad-toggle">
+      <span class="sub">Carga en</span>
+      <button class="chip ${e.unidad === 'kg' ? 'chip-acento' : ''}" data-action="unidad-ej" data-id="${e.id}" data-val="kg">Kg</button>
+      <button class="chip ${e.unidad === 'discos' ? 'chip-acento' : ''}" data-action="unidad-ej" data-id="${e.id}" data-val="discos">Discos</button>
+    </div>`;
+  return `<div class="editor">
     ${unidadHtml}
     <div class="bloques">${bloques}</div>
-    <button class="btn secundario chico ancho" data-action="agregar-bloque" data-i="${i}">+ Más series</button>
-    <input class="nota" type="text" data-zona="${i}" data-campo="nota" value="${esc(z.nota || '')}" placeholder="Nota (opcional)">
+    <div class="fila chica">
+      <button class="btn secundario chico" data-action="agregar-bloque" data-i="${i}" data-k="${k}">+ Más series</button>
+      <button class="btn chico" data-action="ej-listo" data-i="${i}" data-k="${k}">Listo ✓</button>
+    </div>
+    <input class="nota" type="text" data-zona="${i}" data-ej="${k}" data-campo="nota" value="${esc(x.nota || '')}" placeholder="Nota (opcional)">
+  </div>`;
+}
+
+// Una parte (zona) del día: cabecera con tilde de "completada" y, si está abierta, sus ejercicios.
+function cardZona(diaId, b, z, i) {
+  const dia = S.dias.find(d => d.id === diaId);
+  const def = dia && dia.zonas.find(x => x.id === z.zonaId);
+  const ultimas = ultimaEleccion(diaId, z.zonaId);
+  // Orden: lo de la última vez primero, después el resto de la rutina, después lo tildado que no esté en la rutina.
+  const ids = [];
+  ultimas.forEach(id => { if (!ids.includes(id)) ids.push(id); });
+  (def ? def.opciones : []).forEach(id => { if (!ids.includes(id)) ids.push(id); });
+  z.ejercicios.forEach(x => { if (!ids.includes(x.ejercicioId)) ids.push(x.ejercicioId); });
+
+  const hechos = z.ejercicios.filter(x => x.hecho).length;
+  const resumen = z.ejercicios.length
+    ? z.ejercicios.map(x => { const e = ej(x.ejercicioId); return esc(e.nombre) + (x.hecho ? ' ✓' : ''); }).join(' · ')
+    : (z.abierta ? '' : ids.length + (ids.length === 1 ? ' ejercicio' : ' ejercicios'));
+
+  const cab = `<div class="parte-cab">
+      <button class="parte-nombre" data-action="toggle-zona" data-i="${i}">
+        <span class="zona">${esc(z.zona)}</span>
+        <small>${resumen}</small>
+      </button>
+      <button class="tick grande ${z.completada ? 'on' : ''}" data-action="zona-completar" data-i="${i}" aria-label="Parte completada">✓</button>
+    </div>`;
+
+  if (!z.abierta) return `<div class="card zona-card ${z.completada ? 'completada' : ''}">${cab}</div>`;
+
+  const filas = ids.map(id => {
+    const e = ej(id);
+    const k = z.ejercicios.findIndex(x => x.ejercicioId === id);
+    const x = k >= 0 ? z.ejercicios[k] : null;
+    const u = ultimaVezEjercicio(id);
+    let detalle;
+    if (x && x.hecho) detalle = 'Hecho: ' + x.bloques.map(bl => fmtBloque(bl, e)).join(' · ');
+    else if (u) detalle = 'Última vez: ' + fmtSeries(u.series, e);
+    else detalle = 'Nunca hecho';
+    const esUltima = ultimas.includes(id);
+    return `<div class="ej-fila ${x ? (x.hecho ? 'hecho' : 'sel') : ''}">
+      <div class="ej-cab">
+        <button class="ej-nombre" data-action="ej-info" data-i="${i}" data-id="${id}">
+          <span>${esc(e.nombre)}${e.evitar ? ' <span class="aviso">evitar</span>' : ''}${esUltima && !x ? ' <span class="tag">última vez</span>' : ''}</span>
+          <small>${detalle}</small>
+        </button>
+        <button class="tick ${x ? 'on' : ''} ${x && x.hecho ? 'hecho' : ''}" data-action="ej-tick" data-i="${i}" data-id="${id}" aria-label="${x ? (x.hecho ? 'Volver a abrir' : 'Destildar') : 'Lo hago'}">✓</button>
+      </div>
+      ${z.infoId === id ? panelTecnica(e) : ''}
+      ${x && !x.hecho ? editorEjercicio(i, k, x, e) : ''}
+    </div>`;
+  }).join('');
+
+  return `<div class="card zona-card abierta ${z.completada ? 'completada' : ''}">
+    ${cab}
+    <div class="ej-lista">${filas}
+      <button class="opcion tenue" data-action="buscar-ejercicio-zona" data-i="${i}"><span>Buscar otro en el catálogo…</span></button>
+    </div>
+    ${hechos ? '' : '<div class="sub centro-texto">Tocá el nombre para ver cómo se hace. Tocá el tilde para marcar que lo hacés.</div>'}
   </div>`;
 }
 
@@ -745,7 +780,7 @@ document.addEventListener('click', ev => {
   const i = Number(el.dataset.i), j = Number(el.dataset.j);
 
   // Hoy
-  if (a === 'abrir-dia-hoy') { V.diaAbierto = el.dataset.dia; const b = borradorDe(V.diaAbierto); if (b && !b.grupoAbierto) { const d = S.dias.find(x => x.id === V.diaAbierto); b.grupoAbierto = gruposDeDia(d)[0] || null; } render(); return window.scrollTo(0, 0); }
+  if (a === 'abrir-dia-hoy') { V.diaAbierto = el.dataset.dia; borradorDe(V.diaAbierto); render(); return window.scrollTo(0, 0); }
   if (a === 'volver-hoy') { V.diaAbierto = null; render(); return window.scrollTo(0, 0); }
   if (a === 'confirmar-dia') return confirmarDia(V.diaAbierto);
   if (a === 'abrir-otra') { V.otraActividad = { actividad: 'Pádel', nombre: '', duracion: '', nota: '', fecha: hoyISO() }; return render(); }
@@ -761,40 +796,55 @@ document.addEventListener('click', ev => {
   // Día abierto (elección de ejercicios y carga de series)
   const bd = V.diaAbierto ? borradorDe(V.diaAbierto) : null;
   if (a === 'toggle-grupo' && bd) { bd.grupoAbierto = bd.grupoAbierto === el.dataset.g ? null : el.dataset.g; save(); return render(); }
-  if (a === 'toggle-zona' && bd) { const z = bd.zonas[i]; bd.zonaAbierta = bd.zonaAbierta === z.zonaId ? null : z.zonaId; save(); return render(); }
+  if (a === 'toggle-zona' && bd) { const z = bd.zonas[i]; z.abierta = !z.abierta; if (!z.abierta) z.infoId = null; save(); return render(); }
+  if (a === 'zona-completar' && bd) {
+    const z = bd.zonas[i];
+    z.completada = !z.completada;
+    if (z.completada) {
+      z.abierta = false; z.infoId = null;
+      z.ejercicios.forEach(x => x.hecho = true);
+      // Abre la siguiente parte del mismo grupo que falte.
+      const sig = bd.zonas.find((o, k) => k > i && o.grupo === z.grupo && !o.completada);
+      if (sig) sig.abierta = true;
+    } else z.abierta = true;
+    save(); return render();
+  }
   if (a === 'repetir-ultima' && bd) {
-    const previa = ultimaSesionDeDia(V.diaAbierto);
-    if (previa) bd.zonas.forEach((z, k) => {
-      if (z.grupo !== el.dataset.g || z.ejercicioId) return;
-      const p = previa.ejercicios.find(x => x.zonaId === z.zonaId);
-      if (p && !ej(p.ejercicioId).evitar) elegirEjercicioZona(V.diaAbierto, k, p.ejercicioId);
+    bd.zonas.forEach((z, k) => {
+      if (z.grupo !== el.dataset.g) return;
+      ultimaEleccion(V.diaAbierto, z.zonaId).forEach(id => {
+        if (!z.ejercicios.some(x => x.ejercicioId === id) && !ej(id).evitar) tildarEjercicio(V.diaAbierto, k, id);
+      });
+      if (z.ejercicios.length) z.abierta = true;
     });
     save(); return render();
   }
+  if (a === 'ej-info' && bd) { const z = bd.zonas[i]; z.infoId = z.infoId === el.dataset.id ? null : el.dataset.id; return render(); }
+  if (a === 'ej-tick' && bd) { tildarEjercicio(V.diaAbierto, i, el.dataset.id); save(); return render(); }
+  if (a === 'ej-listo' && bd) {
+    const x = bd.zonas[i].ejercicios[Number(el.dataset.k)];
+    if (x) x.hecho = true;
+    save(); toast('Anotado'); return render();
+  }
   if (a === 'bloque-step' && bd) {
     const z = bd.zonas[i];
-    const b = z.bloques[Number(el.dataset.k)];
+    const x = z.ejercicios[Number(el.dataset.k)];
+    const bl = x.bloques[Number(el.dataset.bi)];
     const campo = el.dataset.campo;
-    const paso = campo === 'peso' ? pasoPeso(ej(z.ejercicioId)) : 1;
-    const actual = Number(String(b[campo]).replace(',', '.')) || 0;
+    const paso = campo === 'peso' ? pasoPeso(ej(x.ejercicioId)) : 1;
+    const actual = Number(String(bl[campo]).replace(',', '.')) || 0;
     let nuevo = actual + paso * Number(el.dataset.dir);
     nuevo = Math.max(campo === 'peso' ? 0 : 1, Math.round(nuevo * 100) / 100);
-    b[campo] = nuevo;
+    bl[campo] = nuevo;
     save(); return render();
   }
   if (a === 'agregar-bloque' && bd) {
-    const z = bd.zonas[i];
-    const ult = z.bloques[z.bloques.length - 1];
-    z.bloques.push(ult ? { series: 3, reps: ult.reps, peso: ult.peso } : { series: 3, reps: 10, peso: 0 });
+    const x = bd.zonas[i].ejercicios[Number(el.dataset.k)];
+    const ult = x.bloques[x.bloques.length - 1];
+    x.bloques.push(ult ? { series: 3, reps: ult.reps, peso: ult.peso } : { series: 3, reps: 10, peso: 0 });
     save(); return render();
   }
-  if (a === 'quitar-bloque' && bd) { bd.zonas[i].bloques.splice(Number(el.dataset.k), 1); save(); return render(); }
-  if (a === 'toggle-tecnica' && bd) { bd.zonas[i].tecnica = !bd.zonas[i].tecnica; return render(); }
-  if (a === 'quitar-ejercicio' && bd) {
-    const z = bd.zonas[i];
-    z.ejercicioId = null; z.bloques = []; z.tecnica = false; bd.zonaAbierta = z.zonaId; save(); return render();
-  }
-  if (a === 'elegir-ejercicio' && bd) { elegirEjercicioZona(V.diaAbierto, i, el.dataset.id); save(); return render(); }
+  if (a === 'quitar-bloque' && bd) { bd.zonas[i].ejercicios[Number(el.dataset.k)].bloques.splice(Number(el.dataset.bi), 1); save(); return render(); }
   if (a === 'unidad-ej') {
     S.ejercicios[el.dataset.id] = Object.assign({}, S.ejercicios[el.dataset.id] || {}, { unidad: el.dataset.val });
     save(); return render();
@@ -802,10 +852,11 @@ document.addEventListener('click', ev => {
   if (a === 'buscar-ejercicio-zona' && bd) {
     const diaId = V.diaAbierto;
     return abrirPicker('Elegir ejercicio', '', [], id => {
-      elegirEjercicioZona(diaId, i, id);
+      const z = borradorDe(diaId).zonas[i];
+      if (!z.ejercicios.some(x => x.ejercicioId === id)) tildarEjercicio(diaId, i, id);
       // Se agrega como opción de la parte en la rutina para la próxima.
       const dia = S.dias.find(d => d.id === diaId);
-      const def = dia && dia.zonas.find(x => x.id === borradorDe(diaId).zonas[i].zonaId);
+      const def = dia && dia.zonas.find(o => o.id === z.zonaId);
       if (def && !def.opciones.includes(id)) def.opciones.push(id);
       save();
     });
@@ -915,8 +966,10 @@ document.addEventListener('input', ev => {
   const t = ev.target;
   if (t.dataset.zona !== undefined && V.diaAbierto) {
     const z = borradorDe(V.diaAbierto).zonas[Number(t.dataset.zona)];
-    if (t.dataset.campo === 'nota') z.nota = t.value;
-    else z.bloques[Number(t.dataset.bloque)][t.dataset.campo] = t.value;
+    const x = z.ejercicios[Number(t.dataset.ej)];
+    if (!x) return;
+    if (t.dataset.campo === 'nota') x.nota = t.value;
+    else x.bloques[Number(t.dataset.bloque)][t.dataset.campo] = t.value;
     save(); return;
   }
   if (t.dataset.campoOtra !== undefined) { V.otraActividad[t.dataset.campoOtra] = t.value; return; }
