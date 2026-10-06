@@ -1054,6 +1054,9 @@ async function actualizarApp() {
       const keys = await caches.keys();
       await Promise.all(keys.map(k => caches.delete(k)));
     }
+    // Vuelve a bajar cada archivo salteando la memoria del navegador (GitHub Pages pide guardarlos 10 minutos).
+    const archivos = ['index.html', 'styles.css', 'data.js', 'store.js', 'animaciones.js', 'app.js', 'manifest.json', 'sw.js'];
+    await Promise.all(archivos.map(f => fetch(f, { cache: 'reload' }).catch(() => { })));
   } catch (e) { console.warn(e); }
   location.reload();
 }

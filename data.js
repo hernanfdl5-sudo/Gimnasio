@@ -1,5 +1,5 @@
 // Versión de la app. Se muestra en Ajustes para saber si el celu tiene la última.
-const VERSION_APP = '1.4';
+const VERSION_APP = '1.5';
 
 // Catálogo de ejercicios, zonas y rutinas por defecto.
 // Todo lo que está acá se puede modificar desde la app (Rutinas > Catálogo).
