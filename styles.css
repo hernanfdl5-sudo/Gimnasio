@@ -154,6 +154,16 @@ input.nota { margin-top: 10px; font-size: 14px; padding: 8px 12px; }
 .ej-fila.sel { background: linear-gradient(90deg, rgba(79,140,255,.08), transparent); margin: 0 -14px; padding: 8px 14px; }
 .ej-fila.hecho .ej-nombre > span { color: var(--ok); }
 .editor { margin-top: 6px; }
+.tec-sec { border-bottom: 1px solid var(--borde); }
+.tec-sec:last-of-type { border-bottom: 0; }
+.tec-tit { display: flex; justify-content: space-between; align-items: center; width: 100%; background: none; border: 0; padding: 11px 2px; font: inherit; font-size: 15px; color: var(--texto); cursor: pointer; text-align: left; }
+.tec-sec.abierta .tec-tit { color: var(--acento); font-weight: 600; }
+.tec-cont { padding: 0 2px 10px; }
+.tec-cont ol, .tec-cont ul { margin: 0; padding-left: 20px; }
+.tec-cont li { margin: 4px 0; }
+.tec-cont ul.errores { color: var(--texto-2); margin-top: 0; }
+.tec-cont .anim { margin: 0; }
+.tecnica .fila.chica { margin-top: 10px; }
 .ej-lista .opcion.tenue { margin-top: 8px; width: 100%; }
 .unidad-toggle { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .centro-texto { text-align: center; margin-top: 6px; }

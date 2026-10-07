@@ -10,6 +10,7 @@ const V = {
   hist: { abierto: null, filtro: 'todo' },
   picker: null,            // { titulo, grupo, busqueda, onPick(id), excluir:[] }
   diaAbierto: null,        // id del día abierto en la pestaña Hoy
+  secciones: {},           // secciones de técnica abiertas ("zona|ejercicio:sec" -> true)
 };
 
 function save() { guardarEstado(S); }
@@ -405,13 +406,21 @@ function vistaDiaHoy(diaId) {
     ${botones}`;
 }
 
-// Panel de técnica de un ejercicio (muñequito, pasos, errores, voz, video).
-function panelTecnica(e) {
+// Panel de técnica de un ejercicio: solo títulos, cada uno se abre al tocarlo.
+// key identifica al ejercicio dentro de la parte, para recordar qué secciones están abiertas.
+function panelTecnica(e, key) {
+  const abierta = sec => !!V.secciones[key + ':' + sec];
+  const seccion = (sec, titulo, contenido) => `<div class="tec-sec ${abierta(sec) ? 'abierta' : ''}">
+      <button class="tec-tit" data-action="tec-sec" data-key="${esc(key)}" data-sec="${sec}"><span>${titulo}</span><span>${abierta(sec) ? '▴' : '▾'}</span></button>
+      ${abierta(sec) ? `<div class="tec-cont">${contenido}</div>` : ''}
+    </div>`;
+  let html = '';
+  if (animacionDe(e.id)) html += seccion('mov', 'Ver el movimiento', `<div class="anim" data-anim="${e.id}"></div>`);
+  if ((e.tecnica || []).length) html += seccion('como', 'Cómo se hace', `<ol>${e.tecnica.map(p => `<li>${esc(p)}</li>`).join('')}</ol>`);
+  if ((e.errores || []).length) html += seccion('err', 'Errores comunes', `<ul class="errores">${e.errores.map(p => `<li>${esc(p)}</li>`).join('')}</ul>`);
   return `<div class="tecnica">
-      ${animacionDe(e.id) ? `<div class="anim" data-anim="${e.id}"></div>` : ''}
-      <ol>${(e.tecnica || []).map(p => `<li>${esc(p)}</li>`).join('')}</ol>
-      ${(e.errores || []).length ? `<div class="errores"><b>Errores comunes</b><ul>${e.errores.map(p => `<li>${esc(p)}</li>`).join('')}</ul></div>` : ''}
-      <div class="fila">
+      ${html}
+      <div class="fila chica">
         <button class="btn secundario chico" data-action="hablar" data-id="${e.id}">🔊 Escuchar</button>
         <a class="btn secundario chico" href="${urlVideo(e)}" target="_blank" rel="noopener">▶ Video</a>
       </div>
@@ -425,7 +434,7 @@ function editorEjercicio(i, k, x, e) {
       <span class="etq">${etiqueta}</span>
       <div class="ctrl">
         <button data-action="bloque-step" data-i="${i}" data-k="${k}" data-bi="${bi}" data-campo="${campo}" data-dir="-1" aria-label="Menos">−</button>
-        <input type="text" inputmode="decimal" data-zona="${i}" data-ej="${k}" data-bloque="${bi}" data-campo="${campo}" value="${esc(valor)}">
+        <input type="text" inputmode="decimal" data-zona="${i}" data-ej="${k}" data-bloque="${bi}" data-campo="${campo}" value="${Number(valor) === 0 ? '' : esc(valor)}" placeholder="0">
         <button data-action="bloque-step" data-i="${i}" data-k="${k}" data-bi="${bi}" data-campo="${campo}" data-dir="1" aria-label="Más">+</button>
       </div>
     </div>`;
@@ -496,7 +505,7 @@ function cardZona(diaId, b, z, i) {
         </button>
         <button class="tick ${x ? 'on' : ''} ${x && x.hecho ? 'hecho' : ''}" data-action="ej-tick" data-i="${i}" data-id="${id}" aria-label="${x ? (x.hecho ? 'Volver a abrir' : 'Destildar') : 'Lo hago'}">✓</button>
       </div>
-      ${z.infoId === id ? panelTecnica(e) : ''}
+      ${z.infoId === id ? panelTecnica(e, z.zonaId + '|' + id) : ''}
       ${x && !x.hecho ? editorEjercicio(i, k, x, e) : ''}
     </div>`;
   }).join('');
@@ -820,6 +829,7 @@ document.addEventListener('click', ev => {
     save(); return render();
   }
   if (a === 'ej-info' && bd) { const z = bd.zonas[i]; z.infoId = z.infoId === el.dataset.id ? null : el.dataset.id; return render(); }
+  if (a === 'tec-sec') { const key = el.dataset.key + ':' + el.dataset.sec; V.secciones[key] = !V.secciones[key]; return render(); }
   if (a === 'ej-tick' && bd) { tildarEjercicio(V.diaAbierto, i, el.dataset.id); save(); return render(); }
   if (a === 'ej-listo' && bd) {
     const x = bd.zonas[i].ejercicios[Number(el.dataset.k)];
@@ -1007,6 +1017,14 @@ document.addEventListener('change', ev => {
       S = data; save(); toast('Respaldo importado'); render();
     }).catch(e => alert('No se pudo importar: ' + e.message));
   }
+});
+
+// Al tocar un casillero de series, reps o carga se selecciona todo lo escrito:
+// lo que tipees reemplaza el número en vez de sumarse al lado (antes 0 + 10 quedaba "010").
+document.addEventListener('focusin', ev => {
+  const t = ev.target;
+  if (!t.matches || !t.matches('.stepper input')) return;
+  setTimeout(() => { try { t.setSelectionRange(0, t.value.length); } catch (e) { t.select(); } }, 0);
 });
 
 function renderConservandoFoco(input) {
