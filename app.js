@@ -539,7 +539,8 @@ function editorEjercicio(i, k, x, e) {
 }
 
 // Una fila de ejercicio dentro de una parte: nombre (abre la técnica) y tilde (lo hago).
-function filaEjercicio(i, z, id, ultimas) {
+// En "Ver otros" (esOtro) el botón de la derecha es un "+" que lo suma a tus ejercicios.
+function filaEjercicio(i, z, id, ultimas, esOtro) {
   const e = ej(id);
   const k = z.ejercicios.findIndex(x => x.ejercicioId === id);
   const x = k >= 0 ? z.ejercicios[k] : null;
@@ -555,7 +556,9 @@ function filaEjercicio(i, z, id, ultimas) {
           <span>${esc(e.nombre)}${e.evitar ? ' <span class="aviso">evitar</span>' : ''}${esUltima && !x ? ' <span class="tag">última vez</span>' : ''}</span>
           <small>${detalle}</small>
         </button>
-        <button class="tick ${x ? 'on' : ''} ${x && x.hecho ? 'hecho' : ''}" data-action="ej-tick" data-i="${i}" data-id="${id}" aria-label="${x ? (x.hecho ? 'Volver a abrir' : 'Destildar') : 'Lo hago'}">✓</button>
+        ${esOtro && !x
+          ? `<button class="tick sumar" data-action="sumar-mio" data-id="${id}" aria-label="Sumar a mis ejercicios">+</button>`
+          : `<button class="tick ${x ? 'on' : ''} ${x && x.hecho ? 'hecho' : ''}" data-action="ej-tick" data-i="${i}" data-id="${id}" aria-label="${x ? (x.hecho ? 'Volver a abrir' : 'Destildar') : 'Lo hago'}">✓</button>`}
       </div>
       ${z.infoId === id ? panelTecnica(e, z.zonaId + '|' + id) : ''}
       ${x && !x.hecho ? editorEjercicio(i, k, x, e) : ''}
@@ -594,9 +597,9 @@ function cardZona(diaId, b, z, i) {
   const buscar = `<button class="opcion tenue" data-action="buscar-ejercicio-zona" data-i="${i}"><span>Buscar en todo el catálogo…</span></button>`;
   let otrosHtml;
   if (!otros.length) otrosHtml = buscar;
-  else if (!mios.length) otrosHtml = `<div class="otros-tit">Todavía no tenés ejercicios tuyos acá. Opciones:</div>${otros.map(id => filaEjercicio(i, z, id, ultimas)).join('')}${buscar}`;
+  else if (!mios.length) otrosHtml = `<div class="otros-tit">Todavía no tenés ejercicios tuyos acá. Tocá + para sumar uno a tu lista:</div>${otros.map(id => filaEjercicio(i, z, id, ultimas, true)).join('')}${buscar}`;
   else otrosHtml = `<button class="ver-otros" data-action="toggle-otros" data-i="${i}">${verOtros ? 'Ocultar otros ejercicios ▴' : `Ver otros ejercicios (${otros.length}) ▾`}</button>`
-    + (verOtros ? `<div class="otros">${otros.map(id => filaEjercicio(i, z, id, ultimas)).join('')}${buscar}</div>` : '');
+    + (verOtros ? `<div class="otros"><div class="otros-tit">Tocá + para sumarlo a tus ejercicios.</div>${otros.map(id => filaEjercicio(i, z, id, ultimas, true)).join('')}${buscar}</div>` : '');
 
   return `<div class="card zona-card abierta ${z.completada ? 'completada' : ''}">
     ${cab}
@@ -926,6 +929,7 @@ document.addEventListener('click', ev => {
     toast(ahora ? 'Sumado a tus ejercicios' : 'Lo sacaste de tus ejercicios. Queda en "Ver otros".');
     return render();
   }
+  if (a === 'sumar-mio') { hacerMio(el.dataset.id, true); save(); toast('Sumado a tus ejercicios: ' + ej(el.dataset.id).nombre); return render(); }
   if (a === 'sumar-musculo') { V.sumando = !V.sumando; return render(); }
   if (a === 'agregar-musculo' && bd) {
     const g = el.dataset.g;

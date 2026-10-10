@@ -145,6 +145,7 @@ input.nota { margin-top: 10px; font-size: 14px; padding: 8px 12px; }
 .tick.on { background: var(--acento); border-color: var(--acento); color: var(--acento-texto); }
 .tick.hecho { background: var(--ok); border-color: var(--ok); color: #06240f; }
 .tick.grande { width: 44px; height: 44px; }
+.tick.sumar { color: var(--acento); border-style: dashed; border-color: var(--acento); font-size: 24px; font-weight: 500; }
 .tick.grande.on { background: var(--ok); border-color: var(--ok); color: #06240f; }
 .ej-lista { margin-top: 10px; }
 .ej-fila { border-top: 1px solid var(--borde); padding: 8px 0; }
