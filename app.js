@@ -159,12 +159,21 @@ function gruposDeDia(dia) {
   return out;
 }
 
+// Lo elegido en un día vale solo para ese día (o mientras esa sesión siga en curso). Al día siguiente arranca limpio:
+// sin músculos sumados ni tildes viejos. Los pesos y reps de la "última vez" salen del historial, no de acá.
+function borradorVigente(diaId) {
+  const b = S.borradores && S.borradores[diaId];
+  if (!b) return null;
+  const enCurso = S.enCurso && S.enCurso.diaId === diaId;
+  return (b.fecha === hoyISO() || enCurso) ? b : null;
+}
+
 function borradorDe(diaId) {
   const dia = S.dias.find(d => d.id === diaId);
   if (!dia) return null;
   if (!S.borradores) S.borradores = {};
-  let b = S.borradores[diaId];
-  if (!b) b = S.borradores[diaId] = { zonas: [], grupoAbierto: null, zonaAbierta: null };
+  let b = borradorVigente(diaId);
+  if (!b) b = S.borradores[diaId] = { fecha: hoyISO(), zonas: [], grupoAbierto: null, zonaAbierta: null };
   // Se sincroniza con la rutina: zonas nuevas se agregan, las borradas se van, el orden es el de la rutina.
   const viejas = b.zonas || [];
   b.zonas = dia.zonas.map(z => {
@@ -259,7 +268,7 @@ function zonasPlantilla(g) {
 }
 
 function elegidosEn(diaId) {
-  const b = S.borradores && S.borradores[diaId];
+  const b = borradorVigente(diaId);
   return b ? (b.zonas || []).reduce((n, z) => n + (z.ejercicios || []).length, 0) : 0;
 }
 
@@ -392,12 +401,15 @@ function vistaHoy() {
   }
   strip += '</div>';
 
-  // Si ya hay una sesión de gym guardada hoy, la sugerencia pasa a ser para mañana.
+  // Lo que ya hiciste hoy (gym y otras actividades). Si ya hay gym guardado, la sugerencia pasa a ser para mañana.
   const gymHoy = S.sesiones.filter(s => s.tipo === 'gym' && s.fecha === hoy);
+  const otrasHoy = S.sesiones.filter(s => s.tipo !== 'gym' && s.fecha === hoy);
   const yaEntreno = gymHoy.length > 0 && !S.enCurso;
-  const hechoHoy = yaEntreno ? `<div class="card hecho-hoy">
-      <div class="titulo">✓ Hoy ya entrenaste, bestia</div>
-      ${gymHoy.map(s => `<div class="sub">${esc(s.nombreDia)} · ${fmtMin(s.duracionMin)}${s.horaInicio ? ' · ' + s.horaInicio + '–' + s.horaFin : ''} · ${s.ejercicios.length} ${s.ejercicios.length === 1 ? 'ejercicio' : 'ejercicios'}</div>`).join('')}
+  const lineasHoy = gymHoy.map(s => `<div class="sub">🏋️ ${esc(s.nombreDia)} · ${fmtMin(s.duracionMin)}${s.horaInicio ? ' · ' + s.horaInicio + '–' + s.horaFin : ''} · ${s.ejercicios.length} ${s.ejercicios.length === 1 ? 'ejercicio' : 'ejercicios'}</div>`)
+    .concat(otrasHoy.map(s => `<div class="sub">⚡ ${esc(s.actividad)}${s.duracionMin ? ' · ' + fmtMin(s.duracionMin) : ''}${s.nota ? ' · ' + esc(s.nota) : ''}</div>`));
+  const hechoHoy = lineasHoy.length ? `<div class="card hecho-hoy">
+      <div class="titulo">✓ ${gymHoy.length ? 'Hoy ya entrenaste, bestia' : 'Hoy ya te moviste, bestia'}</div>
+      ${lineasHoy.join('')}
     </div>` : '';
 
   const diasHtml = S.dias.map(d => {
