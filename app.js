@@ -392,6 +392,14 @@ function vistaHoy() {
   }
   strip += '</div>';
 
+  // Si ya hay una sesión de gym guardada hoy, la sugerencia pasa a ser para mañana.
+  const gymHoy = S.sesiones.filter(s => s.tipo === 'gym' && s.fecha === hoy);
+  const yaEntreno = gymHoy.length > 0 && !S.enCurso;
+  const hechoHoy = yaEntreno ? `<div class="card hecho-hoy">
+      <div class="titulo">✓ Hoy ya entrenaste, bestia</div>
+      ${gymHoy.map(s => `<div class="sub">${esc(s.nombreDia)} · ${fmtMin(s.duracionMin)}${s.horaInicio ? ' · ' + s.horaInicio + '–' + s.horaFin : ''} · ${s.ejercicios.length} ${s.ejercicios.length === 1 ? 'ejercicio' : 'ejercicios'}</div>`).join('')}
+    </div>` : '';
+
   const diasHtml = S.dias.map(d => {
     const u = ultimaSesionDeDia(d.id);
     const esSug = sug && sug.diaId === d.id;
@@ -399,10 +407,16 @@ function vistaHoy() {
     const elegidos = elegidosEn(d.id);
     let sub = gruposDeDia(d).map(g => GRUPOS[g]).join(', ');
     if (enCurso) sub = 'En curso desde ' + horaDe(S.enCurso.inicio) + ' · ' + elegidos + ' ejercicios';
+    else if (u && u.fecha === hoy) sub += ' · hecho hoy';
     else if (elegidos) sub += ' · ' + elegidos + ' elegidos';
     else sub += ' · ' + (u ? 'última vez ' + fechaCorta(u.fecha) : 'nunca hecho');
-    const chip = enCurso ? '<div class="chip chip-ok">En curso</div>' : esSug ? '<div class="chip chip-acento">Te toca</div>' : '<div class="chip">Ver</div>';
-    return `<button class="card dia-card ${esSug && !enCurso ? 'sugerido' : ''} ${enCurso ? 'en-curso' : ''}" data-action="abrir-dia-hoy" data-dia="${d.id}">
+    let chip;
+    if (enCurso) chip = '<div class="chip chip-ok">En curso</div>';
+    else if (u && u.fecha === hoy) chip = '<div class="chip chip-ok">Hecho ✓</div>';
+    else if (esSug && yaEntreno) chip = '<div class="chip chip-borde">Mañana</div>';
+    else if (esSug) chip = '<div class="chip chip-acento">Te toca</div>';
+    else chip = '<div class="chip">Ver</div>';
+    return `<button class="card dia-card ${esSug && !enCurso && !yaEntreno ? 'sugerido' : ''} ${enCurso ? 'en-curso' : ''}" data-action="abrir-dia-hoy" data-dia="${d.id}">
       <div><div class="titulo">${esc(d.nombre)}</div><div class="sub">${esc(sub)}</div></div>
       ${chip}
     </button>`;
@@ -413,10 +427,11 @@ function vistaHoy() {
   const ult = S.sesiones.slice().sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
   const ultHtml = ult ? `<p class="nota-pie">Última: ${fechaLarga(ult.fecha)}, ${esc(ult.tipo === 'gym' ? ult.nombreDia : ult.actividad)}.</p>` : '<p class="nota-pie">Tocá un día para ver sus ejercicios. Cuando arranques, "Listo, bestia".</p>';
 
-  return `<header class="encabezado sesion-top"><div><h1>¿Qué hacés hoy?</h1><div class="fecha">${fechaLarga(hoy)}</div></div>
+  return `<header class="encabezado sesion-top"><div><h1>${yaEntreno ? '¡Bien ahí!' : '¿Qué hacés hoy?'}</h1><div class="fecha">${fechaLarga(hoy)}</div></div>
       <button class="link" data-action="actualizar" title="Buscar versión nueva">↻ Actualizar</button></header>
     ${strip}
     ${sug ? `<p class="motivo">Esta semana: ${esc(sug.motivo)} · ${fmtMin(semana.filter(s => s.tipo === 'gym').reduce((n, s) => n + (s.duracionMin || 0), 0))} de gym</p>` : ''}
+    ${hechoHoy}
     ${diasHtml}
     ${otra}
     ${ultHtml}`;

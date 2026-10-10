@@ -129,6 +129,9 @@ input.nota { margin-top: 10px; font-size: 14px; padding: 8px 12px; }
 .serie.hecha .check { background: var(--ok); color: #06240f; border-color: var(--ok); }
 
 .chip-ok { background: var(--ok); color: #06240f; border-color: var(--ok); font-weight: 600; }
+.chip-borde { background: transparent; color: var(--acento); border-color: var(--acento); }
+.card.hecho-hoy { border-color: var(--ok); background: linear-gradient(135deg, rgba(60,207,122,.12), var(--tarjeta)); }
+.card.hecho-hoy .titulo { color: var(--ok); margin-bottom: 4px; }
 .dia-card.en-curso { border-color: var(--ok); }
 /* Partes del día y sus ejercicios */
 .parte-cab { display: flex; align-items: center; gap: 10px; }
