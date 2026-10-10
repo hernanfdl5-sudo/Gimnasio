@@ -231,6 +231,24 @@ function ultimasEnZona(diaId, z) {
   return [];
 }
 
+// ¿La parte tiene algún ejercicio tuyo (o algo tildado hoy)?
+function zonaConMios(diaId, z) {
+  return z.ejercicios.length > 0 || candidatosZona(diaId, z).some(esMio);
+}
+
+// Índices de las partes de un grupo en el orden en que se muestran: primero las que tienen ejercicios tuyos,
+// al final las que no (respetando el orden de la rutina dentro de cada bloque).
+function ordenZonasGrupo(diaId, b, g) {
+  const idx = b.zonas.map((z, i) => z.grupo === g ? i : -1).filter(i => i >= 0);
+  const con = idx.filter(i => zonaConMios(diaId, b.zonas[i]));
+  return con.concat(idx.filter(i => !con.includes(i)));
+}
+
+// Deja abierta solo esta parte (o ninguna, con i = -1).
+function abrirSoloZona(b, i) {
+  b.zonas.forEach((z, k) => { const abrir = k === i; if (!abrir && z.abierta) z.infoId = null; z.abierta = abrir; });
+}
+
 // Partes de un grupo muscular para sumarlo a un día: las de la rutina que ya lo tenga, o las del catálogo.
 function zonasPlantilla(g) {
   for (const d of S.dias) {
@@ -435,7 +453,7 @@ function vistaDiaHoy(diaId) {
   const elegidos = elegidosEn(diaId);
 
   const secciones = grupos.map(g => {
-    const idx = b.zonas.map((z, i) => z.grupo === g ? i : -1).filter(i => i >= 0);
+    const idx = ordenZonasGrupo(diaId, b, g);
     if (!idx.length) return '';
     const completadas = idx.filter(i => b.zonas[i].completada).length;
     const abierto = b.grupoAbierto === g;
@@ -897,27 +915,30 @@ document.addEventListener('click', ev => {
   // Día abierto (elección de ejercicios y carga de series)
   const bd = V.diaAbierto ? borradorDe(V.diaAbierto) : null;
   if (a === 'toggle-grupo' && bd) { bd.grupoAbierto = bd.grupoAbierto === el.dataset.g ? null : el.dataset.g; save(); return render(); }
-  if (a === 'toggle-zona' && bd) { const z = bd.zonas[i]; z.abierta = !z.abierta; if (!z.abierta) z.infoId = null; save(); return render(); }
+  if (a === 'toggle-zona' && bd) { abrirSoloZona(bd, bd.zonas[i].abierta ? -1 : i); save(); return render(); }
   if (a === 'zona-completar' && bd) {
     const z = bd.zonas[i];
     z.completada = !z.completada;
     if (z.completada) {
-      z.abierta = false; z.infoId = null;
       z.ejercicios.forEach(x => x.hecho = true);
-      // Abre la siguiente parte del mismo grupo que falte.
-      const sig = bd.zonas.find((o, k) => k > i && o.grupo === z.grupo && !o.completada);
-      if (sig) sig.abierta = true;
-    } else z.abierta = true;
+      // Abre la siguiente parte del mismo grupo que falte, en el orden en que se ven, y cierra el resto.
+      const orden = ordenZonasGrupo(V.diaAbierto, bd, z.grupo);
+      const pos = orden.indexOf(i);
+      const sig = orden.slice(pos + 1).concat(orden.slice(0, pos)).find(k => !bd.zonas[k].completada);
+      abrirSoloZona(bd, sig === undefined ? -1 : sig);
+    } else abrirSoloZona(bd, i);
     save(); return render();
   }
   if (a === 'repetir-ultima' && bd) {
-    bd.zonas.forEach((z, k) => {
-      if (z.grupo !== el.dataset.g) return;
+    let primera = -1;
+    ordenZonasGrupo(V.diaAbierto, bd, el.dataset.g).forEach(k => {
+      const z = bd.zonas[k];
       ultimaEleccion(V.diaAbierto, z.zonaId).forEach(id => {
         if (!z.ejercicios.some(x => x.ejercicioId === id) && !ej(id).evitar) tildarEjercicio(V.diaAbierto, k, id);
       });
-      if (z.ejercicios.length) z.abierta = true;
+      if (z.ejercicios.length && primera < 0) primera = k;
     });
+    abrirSoloZona(bd, primera);
     save(); return render();
   }
   if (a === 'ej-info' && bd) { const z = bd.zonas[i]; z.infoId = z.infoId === el.dataset.id ? null : el.dataset.id; return render(); }
@@ -937,8 +958,7 @@ document.addEventListener('click', ev => {
       const zonaId = 'extra:' + g + ':' + zona;
       if (!bd.zonas.some(z => z.zonaId === zonaId)) bd.zonas.push({ zonaId, grupo: g, zona, ejercicios: [], completada: false, abierta: false, infoId: null, extra: true });
     });
-    const primera = bd.zonas.find(z => z.extra && z.grupo === g);
-    if (primera) primera.abierta = true;
+    abrirSoloZona(bd, ordenZonasGrupo(V.diaAbierto, bd, g)[0]);
     bd.grupoAbierto = g; V.sumando = false;
     save(); toast(GRUPOS[g] + ' sumado a hoy'); return render();
   }
