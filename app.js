@@ -11,6 +11,7 @@ const V = {
   picker: null,            // { titulo, grupo, busqueda, onPick(id), excluir:[] }
   diaAbierto: null,        // id del día abierto en la pestaña Hoy
   secciones: {},           // secciones de técnica abiertas ("zona|ejercicio:sec" -> true)
+  sumando: false,          // está abierto el selector de "+ Sumar otro músculo hoy"
 };
 
 function save() { guardarEstado(S); }
@@ -176,7 +177,67 @@ function borradorDe(diaId) {
     }
     return Object.assign(v, { grupo: z.grupo, zona: z.zona });
   });
+  // Músculos sumados solo por hoy ("+ Sumar otro músculo"): van al final y se borran al guardar la sesión.
+  viejas.filter(v => v.extra).forEach(v => b.zonas.push(v));
   return b;
+}
+
+// ---------- mis ejercicios ----------
+function esMio(id) { return (S.misEjercicios || []).includes(id); }
+
+function hacerMio(id, si) {
+  if (!S.misEjercicios) S.misEjercicios = [];
+  const k = S.misEjercicios.indexOf(id);
+  if (si && k < 0) S.misEjercicios.push(id);
+  if (!si && k >= 0) S.misEjercicios.splice(k, 1);
+}
+
+// Definición de la parte en la rutina. Para una parte sumada hoy, se usa la misma parte de otro día.
+function zonaDef(diaId, z) {
+  const dia = S.dias.find(d => d.id === diaId);
+  if (!z.extra) { const d = dia && dia.zonas.find(x => x.id === z.zonaId); if (d) return d; }
+  for (const d of S.dias) { const f = d.zonas.find(x => x.grupo === z.grupo && x.zona === z.zona); if (f) return f; }
+  return null;
+}
+
+// Todos los ejercicios posibles para una parte: los de la rutina, los de fábrica y los del catálogo con esa zona.
+function candidatosZona(diaId, z) {
+  const out = [];
+  const add = id => { if (id && !out.includes(id)) out.push(id); };
+  const def = zonaDef(diaId, z);
+  (def ? def.opciones : []).forEach(add);
+  DIAS_DEFAULT.forEach(d => d.zonas.forEach(x => { if (x.grupo === z.grupo && x.zona === z.zona) x.opciones.forEach(add); }));
+  todosEjercicios().forEach(e => { if (e.grupo === z.grupo && e.zona === z.zona) add(e.id); });
+  z.ejercicios.forEach(x => add(x.ejercicioId));
+  return out.filter(id => !ej(id).eliminado);
+}
+
+// ¿Este zonaId guardado en una sesión corresponde a la misma parte (mismo grupo y zona)?
+function mismaZona(zonaId, z) {
+  if (zonaId === z.zonaId) return true;
+  if (zonaId && zonaId.startsWith('extra:')) { const p = zonaId.split(':'); return p[1] === z.grupo && p.slice(2).join(':') === z.zona; }
+  for (const d of S.dias) { const f = d.zonas.find(x => x.id === zonaId); if (f) return f.grupo === z.grupo && f.zona === z.zona; }
+  return false;
+}
+
+// Lo que hizo la última vez en esta parte: primero en este mismo día, si no en cualquier día.
+function ultimasEnZona(diaId, z) {
+  if (!z.extra) { const u = ultimaEleccion(diaId, z.zonaId); if (u.length) return u; }
+  const ses = sesionesGym().slice().sort((a, b) => b.fecha.localeCompare(a.fecha));
+  for (const s of ses) {
+    const ids = s.ejercicios.filter(x => mismaZona(x.zonaId, z)).map(x => x.ejercicioId);
+    if (ids.length) return ids;
+  }
+  return [];
+}
+
+// Partes de un grupo muscular para sumarlo a un día: las de la rutina que ya lo tenga, o las del catálogo.
+function zonasPlantilla(g) {
+  for (const d of S.dias) {
+    const zs = d.zonas.filter(z => z.grupo === g);
+    if (zs.length) return zs.map(z => z.zona);
+  }
+  return (ZONAS[g] || []).slice();
 }
 
 function elegidosEn(diaId) {
@@ -261,6 +322,7 @@ function terminarSesion() {
   const b = borradorDe(c.diaId) || { zonas: [] };
   const ejercicios = [];
   b.zonas.forEach(z => (z.ejercicios || []).forEach(x => {
+    hacerMio(x.ejercicioId, true); // lo que hiciste pasa a tu lista
     const series = [];
     (x.bloques || []).forEach(bl => {
       const n = Number(bl.series) || 0, reps = Number(bl.reps) || 0, peso = Number(String(bl.peso).replace(',', '.')) || 0;
@@ -368,6 +430,7 @@ function vistaDiaHoy(diaId) {
   const b = borradorDe(diaId);
   const enCurso = S.enCurso && S.enCurso.diaId === diaId;
   const grupos = gruposDeDia(dia);
+  b.zonas.forEach(z => { if (!grupos.includes(z.grupo)) grupos.push(z.grupo); });
   const previa = ultimaSesionDeDia(diaId);
   const elegidos = elegidosEn(diaId);
 
@@ -376,13 +439,25 @@ function vistaDiaHoy(diaId) {
     if (!idx.length) return '';
     const completadas = idx.filter(i => b.zonas[i].completada).length;
     const abierto = b.grupoAbierto === g;
-    const puedeRepetir = previa && idx.some(i => ultimaEleccion(diaId, b.zonas[i].zonaId).some(id => !b.zonas[i].ejercicios.some(x => x.ejercicioId === id)));
+    const esExtra = idx.every(i => b.zonas[i].extra);
+    const puedeRepetir = !esExtra && previa && idx.some(i => ultimaEleccion(diaId, b.zonas[i].zonaId).some(id => !b.zonas[i].ejercicios.some(x => x.ejercicioId === id)));
     return `<button class="card grupo-cab ${abierto ? 'abierto' : ''} ${completadas === idx.length ? 'completo' : ''}" data-action="toggle-grupo" data-g="${g}">
-        <span class="titulo">${esc(GRUPOS[g] || g)}</span>
+        <span class="titulo">${esc(GRUPOS[g] || g)}${esExtra ? ' <span class="tag">sumado hoy</span>' : ''}</span>
         <span class="sub">${completadas}/${idx.length} partes ${completadas === idx.length ? '✓' : abierto ? '▲' : '▼'}</span>
       </button>
-      ${abierto ? (puedeRepetir ? `<button class="link repetir" data-action="repetir-ultima" data-g="${g}">Marcar lo de la última vez (${fechaCorta(previa.fecha)})</button>` : '') + idx.map(i => cardZona(diaId, b, b.zonas[i], i)).join('') : ''}`;
+      ${abierto ? (puedeRepetir ? `<button class="link repetir" data-action="repetir-ultima" data-g="${g}">Marcar lo de la última vez (${fechaCorta(previa.fecha)})</button>` : '')
+        + idx.map(i => cardZona(diaId, b, b.zonas[i], i)).join('')
+        + (esExtra ? `<button class="link peligro repetir" data-action="sacar-musculo" data-g="${g}">Sacar ${esc(GRUPOS[g] || g)} de hoy</button>` : '') : ''}`;
   }).join('');
+
+  const faltan = Object.keys(GRUPOS).filter(g => !grupos.includes(g));
+  const sumar = !faltan.length ? '' : V.sumando
+    ? `<div class="card sumar">
+        <div class="titulo">¿Qué más trabajaste hoy?</div>
+        <div class="chips">${faltan.map(g => `<button class="chip" data-action="agregar-musculo" data-g="${g}">${esc(GRUPOS[g])}</button>`).join('')}</div>
+        <button class="link" data-action="sumar-musculo">Cancelar</button>
+      </div>`
+    : `<button class="btn secundario sumar-btn" data-action="sumar-musculo">+ Sumar otro músculo hoy</button>`;
 
   let estado;
   if (enCurso) estado = `En curso desde ${horaDe(S.enCurso.inicio)} · <span id="transcurrido">${fmtMin((Date.now() - S.enCurso.inicio) / 60000)}</span> · ${elegidos} ejercicios`;
@@ -403,6 +478,7 @@ function vistaDiaHoy(diaId) {
       <h1>${esc(dia.nombre)}</h1><div class="fecha">${estado}</div>
     </header>
     ${secciones}
+    ${sumar}
     ${botones}`;
 }
 
@@ -424,6 +500,7 @@ function panelTecnica(e, key) {
         <button class="btn secundario chico" data-action="hablar" data-id="${e.id}">🔊 Escuchar</button>
         <a class="btn secundario chico" href="${urlVideo(e)}" target="_blank" rel="noopener">▶ Video</a>
       </div>
+      <button class="link mio-toggle" data-action="toggle-mio" data-id="${e.id}">${esMio(e.id) ? '★ Está en tus ejercicios · sacarlo' : '☆ Sumarlo a tus ejercicios'}</button>
     </div>`;
 }
 
@@ -461,21 +538,46 @@ function editorEjercicio(i, k, x, e) {
   </div>`;
 }
 
-// Una parte (zona) del día: cabecera con tilde de "completada" y, si está abierta, sus ejercicios.
+// Una fila de ejercicio dentro de una parte: nombre (abre la técnica) y tilde (lo hago).
+function filaEjercicio(i, z, id, ultimas) {
+  const e = ej(id);
+  const k = z.ejercicios.findIndex(x => x.ejercicioId === id);
+  const x = k >= 0 ? z.ejercicios[k] : null;
+  const u = ultimaVezEjercicio(id);
+  let detalle;
+  if (x && x.hecho) detalle = 'Hecho: ' + x.bloques.map(bl => fmtBloque(bl, e)).join(' · ');
+  else if (u) detalle = 'Última vez: ' + fmtSeries(u.series, e);
+  else detalle = 'Nunca hecho';
+  const esUltima = ultimas.includes(id);
+  return `<div class="ej-fila ${x ? (x.hecho ? 'hecho' : 'sel') : ''}">
+      <div class="ej-cab">
+        <button class="ej-nombre" data-action="ej-info" data-i="${i}" data-id="${id}">
+          <span>${esc(e.nombre)}${e.evitar ? ' <span class="aviso">evitar</span>' : ''}${esUltima && !x ? ' <span class="tag">última vez</span>' : ''}</span>
+          <small>${detalle}</small>
+        </button>
+        <button class="tick ${x ? 'on' : ''} ${x && x.hecho ? 'hecho' : ''}" data-action="ej-tick" data-i="${i}" data-id="${id}" aria-label="${x ? (x.hecho ? 'Volver a abrir' : 'Destildar') : 'Lo hago'}">✓</button>
+      </div>
+      ${z.infoId === id ? panelTecnica(e, z.zonaId + '|' + id) : ''}
+      ${x && !x.hecho ? editorEjercicio(i, k, x, e) : ''}
+    </div>`;
+}
+
+// Una parte (zona) del día: cabecera con tilde de "completada" y, si está abierta, tus ejercicios
+// y un desplegable con el resto.
 function cardZona(diaId, b, z, i) {
-  const dia = S.dias.find(d => d.id === diaId);
-  const def = dia && dia.zonas.find(x => x.id === z.zonaId);
-  const ultimas = ultimaEleccion(diaId, z.zonaId);
-  // Orden: lo de la última vez primero, después el resto de la rutina, después lo tildado que no esté en la rutina.
-  const ids = [];
-  ultimas.forEach(id => { if (!ids.includes(id)) ids.push(id); });
-  (def ? def.opciones : []).forEach(id => { if (!ids.includes(id)) ids.push(id); });
-  z.ejercicios.forEach(x => { if (!ids.includes(x.ejercicioId)) ids.push(x.ejercicioId); });
+  const ultimas = ultimasEnZona(diaId, z);
+  const cand = candidatosZona(diaId, z);
+  const marcados = z.ejercicios.map(x => x.ejercicioId);
+  // Tus ejercicios (y lo que tengas tildado hoy), con lo de la última vez primero.
+  const mios = [];
+  ultimas.forEach(id => { if (cand.includes(id) && (esMio(id) || marcados.includes(id)) && !mios.includes(id)) mios.push(id); });
+  cand.forEach(id => { if ((esMio(id) || marcados.includes(id)) && !mios.includes(id)) mios.push(id); });
+  const otros = cand.filter(id => !mios.includes(id));
 
   const hechos = z.ejercicios.filter(x => x.hecho).length;
   const resumen = z.ejercicios.length
     ? z.ejercicios.map(x => { const e = ej(x.ejercicioId); return esc(e.nombre) + (x.hecho ? ' ✓' : ''); }).join(' · ')
-    : (z.abierta ? '' : ids.length + (ids.length === 1 ? ' ejercicio' : ' ejercicios'));
+    : (z.abierta ? '' : mios.length ? mios.length + (mios.length === 1 ? ' ejercicio tuyo' : ' ejercicios tuyos') : 'Sin ejercicios tuyos');
 
   const cab = `<div class="parte-cab">
       <button class="parte-nombre" data-action="toggle-zona" data-i="${i}">
@@ -487,34 +589,18 @@ function cardZona(diaId, b, z, i) {
 
   if (!z.abierta) return `<div class="card zona-card ${z.completada ? 'completada' : ''}">${cab}</div>`;
 
-  const filas = ids.map(id => {
-    const e = ej(id);
-    const k = z.ejercicios.findIndex(x => x.ejercicioId === id);
-    const x = k >= 0 ? z.ejercicios[k] : null;
-    const u = ultimaVezEjercicio(id);
-    let detalle;
-    if (x && x.hecho) detalle = 'Hecho: ' + x.bloques.map(bl => fmtBloque(bl, e)).join(' · ');
-    else if (u) detalle = 'Última vez: ' + fmtSeries(u.series, e);
-    else detalle = 'Nunca hecho';
-    const esUltima = ultimas.includes(id);
-    return `<div class="ej-fila ${x ? (x.hecho ? 'hecho' : 'sel') : ''}">
-      <div class="ej-cab">
-        <button class="ej-nombre" data-action="ej-info" data-i="${i}" data-id="${id}">
-          <span>${esc(e.nombre)}${e.evitar ? ' <span class="aviso">evitar</span>' : ''}${esUltima && !x ? ' <span class="tag">última vez</span>' : ''}</span>
-          <small>${detalle}</small>
-        </button>
-        <button class="tick ${x ? 'on' : ''} ${x && x.hecho ? 'hecho' : ''}" data-action="ej-tick" data-i="${i}" data-id="${id}" aria-label="${x ? (x.hecho ? 'Volver a abrir' : 'Destildar') : 'Lo hago'}">✓</button>
-      </div>
-      ${z.infoId === id ? panelTecnica(e, z.zonaId + '|' + id) : ''}
-      ${x && !x.hecho ? editorEjercicio(i, k, x, e) : ''}
-    </div>`;
-  }).join('');
+  const filas = mios.map(id => filaEjercicio(i, z, id, ultimas)).join('');
+  const verOtros = z.verOtros || !mios.length;
+  const buscar = `<button class="opcion tenue" data-action="buscar-ejercicio-zona" data-i="${i}"><span>Buscar en todo el catálogo…</span></button>`;
+  let otrosHtml;
+  if (!otros.length) otrosHtml = buscar;
+  else if (!mios.length) otrosHtml = `<div class="otros-tit">Todavía no tenés ejercicios tuyos acá. Opciones:</div>${otros.map(id => filaEjercicio(i, z, id, ultimas)).join('')}${buscar}`;
+  else otrosHtml = `<button class="ver-otros" data-action="toggle-otros" data-i="${i}">${verOtros ? 'Ocultar otros ejercicios ▴' : `Ver otros ejercicios (${otros.length}) ▾`}</button>`
+    + (verOtros ? `<div class="otros">${otros.map(id => filaEjercicio(i, z, id, ultimas)).join('')}${buscar}</div>` : '');
 
   return `<div class="card zona-card abierta ${z.completada ? 'completada' : ''}">
     ${cab}
-    <div class="ej-lista">${filas}
-      <button class="opcion tenue" data-action="buscar-ejercicio-zona" data-i="${i}"><span>Buscar otro en el catálogo…</span></button>
-    </div>
+    <div class="ej-lista">${filas}${otrosHtml}</div>
     ${hechos ? '' : '<div class="sub centro-texto">Tocá el nombre para ver cómo se hace. Tocá el tilde para marcar que lo hacés.</div>'}
   </div>`;
 }
@@ -530,7 +616,7 @@ function vistaRutinas() {
   const dias = S.dias.map(d => `<button class="card dia-card" data-action="abrir-dia" data-dia="${d.id}">
       <div><div class="titulo">${esc(d.nombre)}</div><div class="sub">${gruposDeDia(d).map(g => GRUPOS[g]).join(', ')} · ${d.zonas.length} zonas</div></div>
       <div class="chip">Editar</div></button>`).join('');
-  return `<header class="encabezado"><h1>Rutinas</h1><div class="fecha">Cada día tiene grupos con zonas a cubrir. En cada zona elegís uno de los ejercicios.</div></header>
+  return `<header class="encabezado"><h1>Rutinas</h1><div class="fecha">Cada día tiene grupos con partes a cubrir. Los marcados con ★ son tus ejercicios: aparecen primero en el entrenamiento.</div></header>
     ${dias}
     <button class="card dia-card" data-action="abrir-catalogo"><div><div class="titulo">Catálogo de ejercicios</div><div class="sub">${todosEjercicios().length} ejercicios · técnica, unidad, historial</div></div><div class="chip">Ver</div></button>
     <button class="btn secundario" data-action="nuevo-dia">+ Agregar día</button>`;
@@ -549,7 +635,7 @@ function vistaDia(diaId) {
         <button class="link peligro" data-action="quitar-zona" data-i="${i}">Quitar</button>
       </div>
       <div class="chips">
-        ${z.opciones.map(id => { const e = ej(id); return `<span class="chip chip-opcion"><button class="link" data-action="ver-ejercicio" data-id="${id}">${esc(e.nombre)}</button><button class="quitar" data-action="quitar-opcion" data-i="${i}" data-id="${id}" aria-label="Quitar">×</button></span>`; }).join('')}
+        ${z.opciones.map(id => { const e = ej(id); return `<span class="chip chip-opcion ${esMio(id) ? 'mio' : ''}"><button class="link" data-action="ver-ejercicio" data-id="${id}">${esMio(id) ? '★ ' : ''}${esc(e.nombre)}</button><button class="quitar" data-action="quitar-opcion" data-i="${i}" data-id="${id}" aria-label="Quitar">×</button></span>`; }).join('')}
         <button class="chip chip-acento" data-action="agregar-opcion" data-i="${i}">+ opción</button>
       </div>
       <div class="fila chica">
@@ -605,6 +691,9 @@ function vistaEjercicio(id) {
       <div class="fila">
         <label>Unidad<select data-ej-unidad="${e.id}">${Object.keys(UNIDADES).map(u => `<option value="${u}" ${u === e.unidad ? 'selected' : ''}>${UNIDADES[u].label}</option>`).join('')}</select></label>
         <label class="check-label"><input type="checkbox" data-ej-evitar="${e.id}" ${e.evitar ? 'checked' : ''}> Evitar por ahora (lesión)</label>
+      </div>
+      <div class="fila">
+        <label class="check-label"><input type="checkbox" data-ej-mio="${e.id}" ${esMio(e.id) ? 'checked' : ''}> ★ Es uno de mis ejercicios</label>
       </div>
     </div>
     <div class="card">
@@ -790,7 +879,7 @@ document.addEventListener('click', ev => {
 
   // Hoy
   if (a === 'abrir-dia-hoy') { V.diaAbierto = el.dataset.dia; borradorDe(V.diaAbierto); render(); return window.scrollTo(0, 0); }
-  if (a === 'volver-hoy') { V.diaAbierto = null; render(); return window.scrollTo(0, 0); }
+  if (a === 'volver-hoy') { V.diaAbierto = null; V.sumando = false; render(); return window.scrollTo(0, 0); }
   if (a === 'confirmar-dia') return confirmarDia(V.diaAbierto);
   if (a === 'abrir-otra') { V.otraActividad = { actividad: 'Pádel', nombre: '', duracion: '', nota: '', fecha: hoyISO() }; return render(); }
   if (a === 'cerrar-otra') { V.otraActividad = null; return render(); }
@@ -830,6 +919,33 @@ document.addEventListener('click', ev => {
   }
   if (a === 'ej-info' && bd) { const z = bd.zonas[i]; z.infoId = z.infoId === el.dataset.id ? null : el.dataset.id; return render(); }
   if (a === 'tec-sec') { const key = el.dataset.key + ':' + el.dataset.sec; V.secciones[key] = !V.secciones[key]; return render(); }
+  if (a === 'toggle-otros' && bd) { const z = bd.zonas[i]; z.verOtros = !z.verOtros; save(); return render(); }
+  if (a === 'toggle-mio') {
+    const id = el.dataset.id, ahora = !esMio(id);
+    hacerMio(id, ahora); save();
+    toast(ahora ? 'Sumado a tus ejercicios' : 'Lo sacaste de tus ejercicios. Queda en "Ver otros".');
+    return render();
+  }
+  if (a === 'sumar-musculo') { V.sumando = !V.sumando; return render(); }
+  if (a === 'agregar-musculo' && bd) {
+    const g = el.dataset.g;
+    zonasPlantilla(g).forEach(zona => {
+      const zonaId = 'extra:' + g + ':' + zona;
+      if (!bd.zonas.some(z => z.zonaId === zonaId)) bd.zonas.push({ zonaId, grupo: g, zona, ejercicios: [], completada: false, abierta: false, infoId: null, extra: true });
+    });
+    const primera = bd.zonas.find(z => z.extra && z.grupo === g);
+    if (primera) primera.abierta = true;
+    bd.grupoAbierto = g; V.sumando = false;
+    save(); toast(GRUPOS[g] + ' sumado a hoy'); return render();
+  }
+  if (a === 'sacar-musculo' && bd) {
+    const g = el.dataset.g;
+    const conAlgo = bd.zonas.some(z => z.extra && z.grupo === g && z.ejercicios.length);
+    if (conAlgo && !confirm(`¿Sacar ${GRUPOS[g]} de hoy? Se pierde lo que anotaste ahí.`)) return;
+    S.borradores[V.diaAbierto].zonas = bd.zonas.filter(z => !(z.extra && z.grupo === g));
+    if (bd.grupoAbierto === g) S.borradores[V.diaAbierto].grupoAbierto = null;
+    save(); return render();
+  }
   if (a === 'ej-tick' && bd) { tildarEjercicio(V.diaAbierto, i, el.dataset.id); save(); return render(); }
   if (a === 'ej-listo' && bd) {
     const x = bd.zonas[i].ejercicios[Number(el.dataset.k)];
@@ -864,10 +980,10 @@ document.addEventListener('click', ev => {
     return abrirPicker('Elegir ejercicio', '', [], id => {
       const z = borradorDe(diaId).zonas[i];
       if (!z.ejercicios.some(x => x.ejercicioId === id)) tildarEjercicio(diaId, i, id);
-      // Se agrega como opción de la parte en la rutina para la próxima.
-      const dia = S.dias.find(d => d.id === diaId);
-      const def = dia && dia.zonas.find(o => o.id === z.zonaId);
+      // Se agrega como opción de la parte en la rutina y a tus ejercicios, para la próxima.
+      const def = zonaDef(diaId, z);
       if (def && !def.opciones.includes(id)) def.opciones.push(id);
+      hacerMio(id, true);
       save();
     });
   }
@@ -1009,6 +1125,7 @@ document.addEventListener('change', ev => {
   }
   if (t.dataset.diaGrupo) { const d = S.dias.find(x => x.id === t.dataset.diaGrupo); d.grupo = t.value; save(); return render(); }
   if (t.dataset.ejUnidad) { S.ejercicios[t.dataset.ejUnidad] = Object.assign({}, S.ejercicios[t.dataset.ejUnidad] || {}, { unidad: t.value }); save(); return render(); }
+  if (t.dataset.ejMio) { hacerMio(t.dataset.ejMio, t.checked); save(); return render(); }
   if (t.dataset.ejEvitar) { S.ejercicios[t.dataset.ejEvitar] = Object.assign({}, S.ejercicios[t.dataset.ejEvitar] || {}, { evitar: t.checked }); save(); return render(); }
   if (t.dataset.sesionFecha) { const s = S.sesiones.find(x => x.id === t.dataset.sesionFecha); if (s && t.value) { s.fecha = t.value; save(); render(); } return; }
   if (t.id === 'importar' && t.files[0]) {

@@ -1,6 +1,6 @@
 // Service worker: guarda la app en caché para que funcione sin internet.
 // Al cambiar el número de versión se actualiza la caché en el próximo arranque.
-const CACHE = 'gimnasio-v1.6';
+const CACHE = 'gimnasio-v1.7';
 const ARCHIVOS = ['./', './index.html', './styles.css', './data.js', './store.js', './animaciones.js', './app.js', './manifest.json', './icon.png'];
 
 self.addEventListener('install', ev => {

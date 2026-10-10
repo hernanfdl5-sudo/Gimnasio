@@ -1,5 +1,5 @@
 // Versión de la app. Se muestra en Ajustes para saber si el celu tiene la última.
-const VERSION_APP = '1.6';
+const VERSION_APP = '1.7';
 
 // Catálogo de ejercicios, zonas y rutinas por defecto.
 // Todo lo que está acá se puede modificar desde la app (Rutinas > Catálogo).
@@ -664,6 +664,17 @@ const DIAS_DEFAULT = [
       { id: 'l6', grupo: 'piernas', zona: 'Aductores / abductores', opciones: ['aductores', 'abductores'] },
     ],
   },
+];
+
+// Ejercicios que hace habitualmente (según lo que contó al armar la app). Son los que aparecen primero en cada parte;
+// el resto queda en "Ver otros ejercicios". Al hacer uno nuevo pasa solo a esta lista.
+const MIS_EJERCICIOS_INICIALES = [
+  'press-banca', 'press-inclinado-mancuernas', 'cruce-poleas-alto',
+  'extension-polea-barra', 'extension-polea-cuerda',
+  'press-hombros-mancuernas', 'elevaciones-laterales',
+  'jalon-pecho-ancho', 'jalon-pecho-cerrado', 'jalon-maquina-independiente', 'remo-sentado-v',
+  'curl-mancuernas', 'curl-martillo',
+  'prensa', 'extension-cuadriceps', 'curl-femoral-acostado', 'gemelos-pie',
 ];
 
 const ACTIVIDADES = ['Pádel', 'Boxeo', 'Natación', 'Fútbol', 'Correr', 'Bici', 'Caminata', 'Otra'];

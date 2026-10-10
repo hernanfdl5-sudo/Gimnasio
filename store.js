@@ -11,6 +11,7 @@ function estadoInicial() {
     ejercicios: {},
     dias: JSON.parse(JSON.stringify(DIAS_DEFAULT)),
     sesiones: [],
+    misEjercicios: MIS_EJERCICIOS_INICIALES.slice(),
     borradores: {},
     enCurso: null,
     pesoCorporal: [],
@@ -22,7 +23,19 @@ function cargarEstado() {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return estadoInicial();
     const data = JSON.parse(raw);
+    const tieneMios = Array.isArray(data.misEjercicios);
     const estado = Object.assign(estadoInicial(), data);
+    // Migración: antes no existía "mis ejercicios". Se arma con la lista inicial, todo lo que ya hizo,
+    // sus ejercicios propios y lo que haya sumado a mano a una rutina.
+    if (!tieneMios) {
+      const mios = new Set(MIS_EJERCICIOS_INICIALES);
+      (estado.sesiones || []).forEach(s => (s.ejercicios || []).forEach(x => mios.add(x.ejercicioId)));
+      Object.keys(estado.ejercicios || {}).forEach(id => { if (estado.ejercicios[id].personalizado && !estado.ejercicios[id].eliminado) mios.add(id); });
+      const deFabrica = new Set();
+      DIAS_DEFAULT.forEach(d => d.zonas.forEach(z => z.opciones.forEach(id => deFabrica.add(id))));
+      (estado.dias || []).forEach(d => (d.zonas || []).forEach(z => (z.opciones || []).forEach(id => { if (!deFabrica.has(id)) mios.add(id); })));
+      estado.misEjercicios = [...mios];
+    }
     // Migración: versiones viejas de la rutina (con "slots") se reemplazan por la estructura nueva.
     if (!Array.isArray(estado.dias) || estado.dias.some(d => !Array.isArray(d.zonas))) {
       estado.dias = JSON.parse(JSON.stringify(DIAS_DEFAULT));
